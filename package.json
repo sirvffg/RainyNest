@@ -4,11 +4,11 @@
   "private": true,
   "description": "RainyNest 博客系统 — Next.js 15 + Prisma + SQLite，插件/主题可扩展",
   "scripts": {
-    "predev": "node scripts/sync-themes.js && node scripts/build-vendor.js",
+    "predev": "node scripts/ensure-extensions.js",
     "dev": "next dev",
-    "prebuild": "node scripts/sync-themes.js && node scripts/build-vendor.js",
+    "prebuild": "node scripts/ensure-extensions.js",
     "build": "next build --turbopack",
-    "prestart": "node scripts/sync-themes.js && node scripts/build-vendor.js",
+    "prestart": "node scripts/ensure-extensions.js",
     "start": "next start",
     "lint": "next lint",
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma-analytics/analytics.prisma",
@@ -19,7 +19,6 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio --schema=prisma/schema.prisma",
     "db:studio:analytics": "prisma studio --schema=prisma-analytics/analytics.prisma",
-    "reload:vendor": "node scripts/build-vendor.js",
     "setup": "npm run prisma:generate && npm run db:deploy && npm run db:init && npm run db:seed"
   },
   "dependencies": {
@@ -27,6 +26,7 @@
     "@expressive-code/plugin-line-numbers": "^0.41.0",
     "@milkdown/kit": "^7.23.0",
     "@prisma/client": "^5.22.0",
+    "adm-zip": "^0.6.1",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.2.0",
     "katex": "^0.16.22",
@@ -55,6 +55,8 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@rainynest/plugin-types": "^0.1.0",
+    "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.0",
     "@types/node-cron": "^3.0.11",

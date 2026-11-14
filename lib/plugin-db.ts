@@ -32,3 +32,13 @@ export function closeAllPluginDbs() {
   }
   dbCache.clear();
 }
+
+// 关闭单个插件的数据库连接（卸载/清数据前调用）
+export function closePluginDb(slug: string) {
+  const db = dbCache.get(slug);
+  if (!db) return;
+  try {
+    db.close();
+  } catch { /* ignore */ }
+  dbCache.delete(slug);
+}

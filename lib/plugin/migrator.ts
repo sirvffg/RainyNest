@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { getPluginDb } from '../plugin-db';
 
-const PLUGINS_DIR = path.join(process.cwd(), 'vendor', 'plugins');
+const PLUGINS_DIR = path.join(process.cwd(), 'scripts', 'plugins');
 const MIGRATIONS_TABLE = '_rn_migrations';
 
 function ensureMigrationsTable(db: Database) {

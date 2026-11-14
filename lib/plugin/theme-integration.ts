@@ -1,5 +1,5 @@
 // lib/plugin/theme-integration.ts — Halo 风格"主题优先"插件模板解析
-// 主题可以覆盖插件模板：vendor/themes/{slug}/templates/plugins/{pluginSlug}/{name}.tsx
+// 主题可以覆盖插件模板：scripts/themes/{slug}/templates/plugins/{pluginSlug}/{name}.tsx
 import fs from 'node:fs';
 import path from 'node:path';
 import { getActiveTheme } from '../theme';
@@ -8,8 +8,8 @@ export async function resolvePluginTemplate(
   pluginSlug: string,
   templateName: string
 ): Promise<unknown | null> {
-  const THEMES_DIR = path.join(process.cwd(), 'vendor', 'themes');
-  const PLUGINS_DIR = path.join(process.cwd(), 'vendor', 'plugins');
+  const THEMES_DIR = path.join(process.cwd(), 'scripts', 'themes');
+  const PLUGINS_DIR = path.join(process.cwd(), 'scripts', 'plugins');
 
   // 1. 先查当前激活主题有没有覆盖这个模板
   const activeTheme = await getActiveTheme();

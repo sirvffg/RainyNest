@@ -1,0 +1,16 @@
+{
+  "specVersion": "1.0",
+  "slug": "page-views",
+  "name": "页面浏览量",
+  "version": "1.0.0",
+  "description": "按路径统计 PV（onPageView 扩展点），独立 SQLite 存储，提供查询 API",
+  "author": "RainyNest Team",
+  "entry": "index.ts",
+  "permissions": [
+    {
+      "name": "plugin:page-views:view",
+      "displayName": "查看页面浏览量",
+      "group": "插件"
+    }
+  ]
+}

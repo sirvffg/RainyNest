@@ -1,5 +1,5 @@
 // lib/plugin/engine.ts — 插件加载与扩展点执行引擎
-// 扫描 vendor/plugins → 从预编译产物加载 → 按扩展点分组 → 执行
+// 扫描 scripts/plugins（安装态扩展：plugin.json + 已 bundle 的 index.js）→ 加载 → 按扩展点分组 → 执行
 import fs from 'node:fs';
 import path from 'node:path';
 import { db } from '../prisma';
@@ -13,9 +13,8 @@ import type {
   PluginLogger,
 } from './types';
 
-const PLUGINS_DIR = path.join(process.cwd(), 'vendor', 'plugins');
-// ⭐ 运行时从预编译目录加载，不是 vendor/ 源码目录
-const COMPILED_DIR = path.join(process.cwd(), '.vendor-compiled', 'plugins');
+// 安装目录（内置预装与后台上传共用）：plugin.json 与 index.js 同目录
+const PLUGINS_DIR = path.join(process.cwd(), 'scripts', 'plugins');
 
 // ⭐ process.getBuiltinModule 运行时取模块，绕过 Turbopack 对 createRequire(计算路径) 的静态分析告警
 const nodeRequire = process.getBuiltinModule('node:module').createRequire(
@@ -51,9 +50,11 @@ export async function bootPlugins(): Promise<void> {
     const plugins: LoadedPlugin[] = [];
 
     if (fs.existsSync(PLUGINS_DIR)) {
-      const dirs = fs.readdirSync(PLUGINS_DIR).filter((d) =>
-        fs.statSync(path.join(PLUGINS_DIR, d)).isDirectory()
-      );
+      const dirs = fs.readdirSync(PLUGINS_DIR).filter((d) => {
+        // 跳过安装器备份/待删目录
+        if (/(\.bak-\d+|\.deleted-\d+)$/.test(d)) return false;
+        return fs.statSync(path.join(PLUGINS_DIR, d)).isDirectory();
+      });
 
       for (const dir of dirs) {
         const jsonPath = path.join(PLUGINS_DIR, dir, 'plugin.json');
@@ -74,22 +75,23 @@ export async function bootPlugins(): Promise<void> {
         if (dbEntry && !dbEntry.isActive) continue; // 数据库禁用的跳过
 
         try {
-          const entryFile = (meta.entry || 'index.ts').replace('.ts', '.js');
-          const compiledEntry = path.join(COMPILED_DIR, dir, entryFile);
-          if (!fs.existsSync(compiledEntry)) {
-            console.error(`[Plugin] ${dir}: 预编译产物不存在，请运行 npm run reload:vendor`);
+          const entryFile = (meta.entry || 'index.ts').replace(/\.tsx?$/, '.js');
+          const entryPath = path.join(PLUGINS_DIR, dir, entryFile);
+          if (!fs.existsSync(entryPath)) {
+            console.error(`[Plugin] ${dir}: 入口产物不存在（${entryFile}），请用 @rainynest/ext 重新安装`);
             continue;
           }
 
-          const mod = nodeRequire(compiledEntry);
+          const mod = nodeRequire(entryPath);
           const ctx: PluginContext = {
-            db,
-            analytics,
-            pluginDb: getPluginDb(dir),
+            // 宿主生成客户端/站点设置与 SPI 结构化类型对齐（经 unknown 转换）
+            db: db as unknown as PluginContext['db'],
+            analytics: analytics as unknown as PluginContext['analytics'],
+            pluginDb: getPluginDb(dir) as unknown as PluginContext['pluginDb'],
             slug: dir,
             version: meta.version,
             config: dbEntry?.config ? JSON.parse(dbEntry.config) : {},
-            site: await getSiteSetting(),
+            site: (await getSiteSetting()) as unknown as PluginContext['site'],
             env: process.env,
             logger: createPluginLogger(dir),
             emitEvent,
@@ -112,10 +114,10 @@ export async function bootPlugins(): Promise<void> {
       if (p.handlers.onMount) {
         try {
           await p.handlers.onMount({
-            db,
-            analytics,
-            pluginDb: getPluginDb(p.slug),
-            site: await getSiteSetting(),
+            db: db as unknown as PluginContext['db'],
+            analytics: analytics as unknown as PluginContext['analytics'],
+            pluginDb: getPluginDb(p.slug) as unknown as PluginContext['pluginDb'],
+            site: (await getSiteSetting()) as unknown as PluginContext['site'],
             slug: p.slug,
             version: p.meta.version,
             config: p.config,
@@ -141,9 +143,17 @@ export async function bootPlugins(): Promise<void> {
   }
 }
 
-// 开发模式热重载（npm run reload:vendor 后调用）
+// 开发模式热重载：清除指定插件的 require 缓存并重置扩展注册表
 export function resetPluginCache() {
   g.__rnPlugins = null;
+}
+
+export function reloadPlugin(slug: string) {
+  const dir = path.join(PLUGINS_DIR, slug);
+  for (const key of Object.keys(nodeRequire.cache)) {
+    if (key === dir || key.startsWith(dir + path.sep)) delete nodeRequire.cache[key];
+  }
+  resetPluginCache();
 }
 
 // 函数类扩展点 key（searchProvider 等对象型扩展点单独处理）

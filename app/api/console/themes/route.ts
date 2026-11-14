@@ -28,6 +28,7 @@ export async function GET() {
       ...meta,
       isActive: dbEntry?.isActive ?? false,
       config: dbEntry?.config ? safeParse(dbEntry.config) : null,
+      source: dbEntry?.source ?? 'builtin',
       installedAt: dbEntry?.installedAt ?? null,
       updatedAt: dbEntry?.updatedAt ?? null,
     };
@@ -47,6 +48,7 @@ export async function GET() {
       configSchema: {},
       isActive: t.isActive,
       config: t.config ? safeParse(t.config) : null,
+      source: t.source,
       installedAt: t.installedAt,
       updatedAt: t.updatedAt,
       missing: true,

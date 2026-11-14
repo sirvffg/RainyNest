@@ -17,7 +17,7 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
   const { slug } = await params;
 
   // 校验插件存在于磁盘
-  const jsonPath = path.join(process.cwd(), 'vendor', 'plugins', slug, 'plugin.json');
+  const jsonPath = path.join(process.cwd(), 'scripts', 'plugins', slug, 'plugin.json');
   if (!fs.existsSync(jsonPath)) {
     return NextResponse.json({ error: '插件不存在或 plugin.json 缺失' }, { status: 404 });
   }

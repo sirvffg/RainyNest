@@ -28,6 +28,9 @@ public/uploads/*
 .env.local
 .env*.local
 
+# npm publish token
+.npm-publish.npmrc
+
 # misc
 .DS_Store
 *.log

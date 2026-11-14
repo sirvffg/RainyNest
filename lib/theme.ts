@@ -1,11 +1,10 @@
-// lib/theme.ts — 主题加载器（扫描 vendor/themes，读 theme.json，合并配置，生成 CSS 变量）
+// lib/theme.ts — 主题加载器（扫描 scripts/themes 安装态目录，读 theme.json，合并配置，生成 CSS 变量）
 import fs from 'node:fs';
 import path from 'node:path';
 import { db } from './prisma';
 
-const THEMES_DIR = path.join(process.cwd(), 'vendor', 'themes');
-// ⭐ 运行时从预编译目录加载（不是 vendor/ 源码目录）
-const COMPILED_THEMES_DIR = path.join(process.cwd(), '.vendor-compiled', 'themes');
+// 安装目录（内置预装与后台上传共用）：theme.json 与 theme.js 同目录
+const THEMES_DIR = path.join(process.cwd(), 'scripts', 'themes');
 
 // ⭐ process.getBuiltinModule 运行时取模块，绕过 Turbopack 对 createRequire(计算路径) 的静态分析告警
 const nodeRequire = process.getBuiltinModule('node:module').createRequire(
@@ -37,6 +36,8 @@ export async function scanInstalledThemes(): Promise<ThemeMeta[]> {
   if (!fs.existsSync(THEMES_DIR)) return [];
   const themes: ThemeMeta[] = [];
   for (const dir of fs.readdirSync(THEMES_DIR)) {
+    // 跳过安装器备份/待删目录
+    if (/(\.bak-\d+|\.deleted-\d+)$/.test(dir)) continue;
     const jsonPath = path.join(THEMES_DIR, dir, 'theme.json');
     if (!fs.existsSync(jsonPath)) continue;
     try {
@@ -79,15 +80,15 @@ export async function getActiveTheme(): Promise<ActiveTheme | null> {
       if (fs.existsSync(jsonPath)) {
         const meta: ThemeMeta = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
 
-        // 3. 从预编译目录加载 theme.js 的 configToCssVariables
+        // 3. 加载 theme.js 的 configToCssVariables
         let configToVars = (config: any) => ({});
         try {
-          const compiledTheme = path.join(COMPILED_THEMES_DIR, dbTheme.slug, 'theme.js');
+          const compiledTheme = path.join(THEMES_DIR, dbTheme.slug, 'theme.js');
           if (fs.existsSync(compiledTheme)) {
             const mod = nodeRequire(compiledTheme);
             configToVars = mod.configToCssVariables || configToVars;
           }
-        } catch { /* 主题没有 theme.ts，用默认映射 */ }
+        } catch { /* 主题没有 theme.js，用默认映射 */ }
 
         // 4. 合并 DB 存的配置值 + theme.json 默认值
         const mergedConfig = mergeWithDefault(

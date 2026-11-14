@@ -1,4 +1,4 @@
-// app/api/console/plugins/route.ts — 插件列表（直接扫 vendor/plugins 读 plugin.json + 数据库合并）
+// app/api/console/plugins/route.ts — 插件列表（扫 scripts/plugins 安装态目录读 plugin.json + 数据库合并）
 import { NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,10 +13,14 @@ export async function GET() {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
 
-  const pluginsDir = path.join(process.cwd(), 'vendor', 'plugins');
+  const pluginsDir = path.join(process.cwd(), 'scripts', 'plugins');
   const metas: Record<string, unknown>[] = [];
   if (fs.existsSync(pluginsDir)) {
-    const dirs = fs.readdirSync(pluginsDir).filter((d) => fs.statSync(path.join(pluginsDir, d)).isDirectory());
+    const dirs = fs.readdirSync(pluginsDir).filter((d) => {
+      // 跳过安装器备份/待删目录（可能残留）
+      if (/(\.bak-\d+|\.deleted-\d+)$/.test(d)) return false;
+      return fs.statSync(path.join(pluginsDir, d)).isDirectory();
+    });
     for (const dir of dirs) {
       const jsonPath = path.join(pluginsDir, dir, 'plugin.json');
       if (!fs.existsSync(jsonPath)) continue;
@@ -41,6 +45,7 @@ export async function GET() {
       ...meta,
       isActive: dbEntry?.isActive ?? false,
       config: dbEntry?.config ? safeParse(dbEntry.config) : null,
+      source: dbEntry?.source ?? 'builtin',
       installedAt: dbEntry?.installedAt ?? null,
       updatedAt: dbEntry?.updatedAt ?? null,
     };
@@ -57,6 +62,7 @@ export async function GET() {
       author: p.author ?? undefined,
       isActive: p.isActive,
       config: p.config ? safeParse(p.config) : null,
+      source: p.source,
       installedAt: p.installedAt,
       updatedAt: p.updatedAt,
       missing: true,

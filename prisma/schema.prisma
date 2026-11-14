@@ -318,6 +318,7 @@ model Theme {
   preview     String?
   isActive    Boolean  @default(false)
   config      String?
+  source      String   @default("builtin") // builtin=内置预装 uploaded=后台上传
   installedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -331,6 +332,7 @@ model Plugin {
   author      String?
   isActive    Boolean  @default(false)
   config      String?
+  source      String   @default("builtin") // builtin=内置预装 uploaded=后台上传
   installedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

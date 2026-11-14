@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Power, Puzzle, Settings2, Users } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Loader2, Power, Puzzle, Settings2, Trash2, Upload, Users } from 'lucide-react';
 import ToastProvider, { useToast } from '@/components/admin/Toast';
 import Modal from '@/components/admin/Modal';
 import ConfigForm, { buildDefaultConfig, type ConfigSchema } from '@/components/admin/ConfigForm';
@@ -14,6 +14,7 @@ interface PluginItem {
   description?: string | null;
   author?: string | null;
   isActive: boolean;
+  source?: 'builtin' | 'uploaded' | string;
   configSchema?: ConfigSchema | null;
   config?: Record<string, unknown> | null;
 }
@@ -38,6 +39,10 @@ function PluginsContent() {
   const [configTarget, setConfigTarget] = useState<PluginItem | null>(null);
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [savingConfig, setSavingConfig] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uninstallTarget, setUninstallTarget] = useState<PluginItem | null>(null);
+  const [uninstalling, setUninstalling] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     // 有缓存时不重置 loading（避免二次进入闪骨架），后台静默刷新
@@ -85,6 +90,48 @@ function PluginsContent() {
     setConfig(buildDefaultConfig(plugin.configSchema ?? {}, plugin.config));
   }
 
+  // 上传安装插件包（*.zip.rainy-plugin / *.gz.rainy-plugin）
+  async function onUploadFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || uploading) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/console/plugins/install', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '安装失败');
+      toast(`插件「${data.slug}」${data.upgraded ? '升级' : '安装'}成功`);
+      cachedList = null;
+      load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '安装失败 请稍后重试', 'error');
+    }
+    setUploading(false);
+  }
+
+  // 卸载上传插件：keepData=false 连独立数据一起删除
+  async function doUninstall(keepData: boolean) {
+    if (!uninstallTarget || uninstalling) return;
+    setUninstalling(true);
+    try {
+      const res = await fetch(`/api/console/plugins/${encodeURIComponent(uninstallTarget.slug)}?keepData=${keepData ? 1 : 0}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '卸载失败');
+      toast(keepData ? `插件「${uninstallTarget.name}」已卸载 数据已保留` : `插件「${uninstallTarget.name}」已卸载 数据已删除`);
+      cachedList = null;
+      setUninstallTarget(null);
+      load();
+      window.dispatchEvent(new CustomEvent('rainynest:plugin-nav-changed'));
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '卸载失败 请稍后重试', 'error');
+    }
+    setUninstalling(false);
+  }
+
   async function saveConfig() {
     if (savingConfig || !configTarget) return;
     setSavingConfig(true);
@@ -107,9 +154,29 @@ function PluginsContent() {
   return (
     <div className="space-y-6">
       {/* 页头 */}
-      <div className="anim-fade-in-up">
-        <h1 className="text-2xl font-bold">插件管理</h1>
-        <p className="mt-1 text-sm text-fg-muted">为站点按需扩展能力</p>
+      <div className="anim-fade-in-up flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">插件管理</h1>
+          <p className="mt-1 text-sm text-fg-muted">为站点按需扩展能力</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".zip.rainy-plugin,.gz.rainy-plugin"
+            className="hidden"
+            onChange={onUploadFile}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="liquid-btn liquid-btn-sm inline-flex items-center gap-1.5 disabled:cursor-not-allowed"
+          >
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {uploading ? '上传中' : '上传安装'}
+          </button>
+        </div>
       </div>
 
       {/* 插件网格 */}
@@ -145,6 +212,9 @@ function PluginsContent() {
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="truncate font-semibold">{plugin.name}</h3>
                     <span className="shrink-0 rounded bg-bg-secondary px-1.5 py-0.5 font-mono text-xs text-fg-muted">v{plugin.version}</span>
+                    {plugin.source === 'builtin' && (
+                      <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">内置</span>
+                    )}
                   </div>
                   <p className="mt-0.5 flex items-center gap-1 text-xs text-fg-muted">
                     <Users className="h-3 w-3" />
@@ -175,6 +245,16 @@ function PluginsContent() {
                   <Settings2 className="h-4 w-4" />
                   配置
                 </button>
+                {plugin.source !== 'builtin' && (
+                  <button
+                    type="button"
+                    onClick={() => setUninstallTarget(plugin)}
+                    className="inline-flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm transition-all duration-200 hover:border-red-400 hover:bg-red-50 hover:text-red-500 active:scale-95"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    卸载
+                  </button>
+                )}
               </div>
               {plugin.isActive && (
                 <p className="mt-2 inline-flex items-center gap-1 text-xs text-emerald-600 anim-fade-in">
@@ -221,6 +301,50 @@ function PluginsContent() {
             onChange={(key, v) => setConfig((c) => ({ ...c, [key]: v }))}
           />
         )}
+      </Modal>
+
+      {/* 卸载确认模态：询问是否保留插件独立数据 */}
+      <Modal
+        open={!!uninstallTarget}
+        onClose={() => !uninstalling && setUninstallTarget(null)}
+        title={`卸载插件 · ${uninstallTarget?.name ?? ''}`}
+        maxWidth="max-w-md"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setUninstallTarget(null)}
+              disabled={uninstalling}
+              className="rounded border border-line px-4 py-2 text-sm transition-all duration-200 hover:bg-bg-secondary active:scale-95 disabled:cursor-not-allowed"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => doUninstall(true)}
+              disabled={uninstalling}
+              className="rounded border border-line px-4 py-2 text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95 disabled:cursor-not-allowed"
+            >
+              保留数据
+            </button>
+            <button
+              type="button"
+              onClick={() => doUninstall(false)}
+              disabled={uninstalling}
+              className="inline-flex items-center gap-1.5 rounded border border-red-300 px-4 py-2 text-sm text-red-500 transition-all duration-200 hover:bg-red-50 active:scale-95 disabled:cursor-not-allowed"
+            >
+              {uninstalling && <Loader2 className="h-4 w-4 animate-spin" />}
+              卸载并删除数据
+            </button>
+          </div>
+        }
+      >
+        <p className="text-sm leading-relaxed text-fg-muted">
+          卸载后插件文件与后台记录将被删除 站点即刻失去该插件提供的能力
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-fg-muted">
+          插件的独立数据（统计 自建表）可以选择保留 重装同名插件后数据仍在
+        </p>
       </Modal>
     </div>
   );
