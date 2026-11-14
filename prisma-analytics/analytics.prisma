@@ -1,0 +1,94 @@
+// RainyNest 访问库 Schema（analytics.db）
+// 高频写入：每次页面访问 INSERT 一条 PageView，与主库完全隔离
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma/analytics"
+}
+
+datasource analytics {
+  provider = "sqlite"
+  url      = env("ANALYTICS_DATABASE_URL")
+}
+
+// ========== 原始访问日志（高频写入）==========
+model PageView {
+  id        String   @id @default(cuid())
+
+  path      String
+  postId    String?
+  referer   String?
+  userAgent String?
+  ip        String?
+  country   String?
+  device    String?
+  duration  Int?
+
+  sessionId String?
+  uniqueKey String?
+
+  createdAt DateTime @default(now())
+
+  @@index([path])
+  @@index([postId])
+  @@index([createdAt])
+  @@index([sessionId])
+  @@unique([uniqueKey])
+}
+
+// ========== 实时在线访客 ==========
+model OnlineVisitor {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  ip        String?
+  path      String?
+  userAgent String?
+  firstSeen DateTime @default(now())
+  lastSeen  DateTime @default(now())
+}
+
+// ========== 日统计聚合 ==========
+model DailyStat {
+  id          String   @id @default(cuid())
+  date        DateTime @unique
+
+  pv          Int      @default(0)
+  uv          Int      @default(0)
+  newVisitors Int      @default(0)
+  avgDuration Float    @default(0)
+
+  topPath     String?
+  topPathPv   Int      @default(0)
+
+  topPostId   String?
+  topPostPv   Int      @default(0)
+
+  referers    String?
+  devices     String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ========== 小时级聚合 ==========
+model HourlyStat {
+  id   String   @id @default(cuid())
+  hour DateTime @unique
+
+  pv   Int      @default(0)
+  uv   Int      @default(0)
+
+  @@index([hour])
+}
+
+// ========== 文章访问快照（回填主库 Post.views 的依据）==========
+model PostDailyView {
+  id     String   @id @default(cuid())
+  postId String
+  date   DateTime
+  pv     Int      @default(0)
+
+  @@unique([postId, date])
+  @@index([postId])
+  @@index([date])
+}
