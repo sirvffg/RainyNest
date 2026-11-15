@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { requireSession } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
+import { getPluginConfigStore } from '@/lib/plugin/json-store';
 
 export const runtime = 'nodejs';
 
@@ -37,19 +38,20 @@ export async function GET() {
   const bySlug = new Map(dbPlugins.map((p) => [p.slug, p]));
   const scanned = new Set<string>();
 
-  const list: Record<string, unknown>[] = metas.map((meta) => {
+  const list: Record<string, unknown>[] = [];
+  for (const meta of metas) {
     const slug = String(meta.slug);
     scanned.add(slug);
     const dbEntry = bySlug.get(slug);
-    return {
+    list.push({
       ...meta,
       isActive: dbEntry?.isActive ?? false,
-      config: dbEntry?.config ? safeParse(dbEntry.config) : null,
+      config: await getPluginConfigStore(slug).get(),
       source: dbEntry?.source ?? 'builtin',
       installedAt: dbEntry?.installedAt ?? null,
       updatedAt: dbEntry?.updatedAt ?? null,
-    };
-  });
+    });
+  }
 
   // 数据库有记录但磁盘缺失的插件（标记 missing）
   for (const p of dbPlugins) {
@@ -61,7 +63,7 @@ export async function GET() {
       description: p.description ?? undefined,
       author: p.author ?? undefined,
       isActive: p.isActive,
-      config: p.config ? safeParse(p.config) : null,
+      config: null,
       source: p.source,
       installedAt: p.installedAt,
       updatedAt: p.updatedAt,
@@ -70,12 +72,4 @@ export async function GET() {
   }
 
   return NextResponse.json({ list });
-}
-
-function safeParse(json: string): unknown {
-  try {
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
 }

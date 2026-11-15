@@ -2,7 +2,7 @@
   "specVersion": "1.0",
   "slug": "reading-time",
   "name": "阅读时间",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "文章阅读时间 + 字数统计，onRenderMarkdown 扩展点实现",
   "author": "RainyNest Team",
   "entry": "index.ts",

@@ -2,7 +2,7 @@
   "specVersion": "1.0",
   "slug": "rss-feed",
   "name": "RSS 订阅",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "RSS 2.0 / Atom 双格式订阅源，自动输出最近 20 篇已发布文章",
   "author": "RainyNest Team",
   "entry": "index.ts",

@@ -2,7 +2,7 @@
   "specVersion": "1.0",
   "slug": "default-seo",
   "name": "SEO 助手",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "自动生成文章摘要 + OpenGraph/Twitter 元数据增强 + 站长平台验证标签",
   "author": "RainyNest Team",
   "entry": "index.ts",

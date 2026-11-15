@@ -1,0 +1,2 @@
+﻿# 占位文件：插件 SQLite 存储目录（db/plugins-db，ctx.pluginDb 懒加载，插件用到时才会生成 <slug>.db）
+

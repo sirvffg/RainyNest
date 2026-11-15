@@ -1,6 +1,7 @@
 // app/api/console/plugins/[slug]/route.ts — 插件资源级操作：DELETE 卸载（仅管理员）
 // 内置插件（source=builtin）只允许停用不允许卸载；上传插件删除目录 + DB 记录
-// keepData=1 保留插件独立库（db/plugins/<slug>.db），重装后数据仍在；否则连数据一起删除
+// keepData=1 保留插件数据（db/plugins-db/<slug>.db 与 db/plugins-json/<slug>.run.json、.config.json），
+// 否则连数据一起删除
 import { NextResponse, NextRequest } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
 import { resetPluginCache } from '@/lib/plugin/engine';
 import { closePluginDb } from '@/lib/plugin-db';
+import { deletePluginJsonFiles } from '@/lib/plugin/json-store';
 import { rmDirSafe } from '@/lib/ext-installer';
 
 export const runtime = 'nodejs';
@@ -48,9 +50,11 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
     if (!keepData) {
       closePluginDb(slug);
       for (const suffix of ['', '-wal', '-shm']) {
-        const f = path.join(process.cwd(), 'db', 'plugins', `${slug}.db${suffix}`);
+        const f = path.join(process.cwd(), 'db', 'plugins-db', `${slug}.db${suffix}`);
         if (fs.existsSync(f)) fs.rmSync(f, { force: true });
       }
+      // 删除 JSON 存储（run.json 运行数据 + config.json 配置）
+      deletePluginJsonFiles(slug);
     }
   } catch (err) {
     console.error('[api/console/plugins/uninstall] failed:', err);

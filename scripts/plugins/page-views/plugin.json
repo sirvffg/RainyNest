@@ -2,8 +2,8 @@
   "specVersion": "1.0",
   "slug": "page-views",
   "name": "页面浏览量",
-  "version": "1.0.0",
-  "description": "按路径统计 PV（onPageView 扩展点），独立 SQLite 存储，提供查询 API",
+  "version": "1.1.1",
+  "description": "按路径统计 PV（onPageView 扩展点），JSON 文件存储（自动迁移旧 SQLite 数据），提供查询 API",
   "author": "RainyNest Team",
   "entry": "index.ts",
   "permissions": [

@@ -1,10 +1,10 @@
 // lib/plugin-db.ts — 插件独立数据库（better-sqlite3 原生连接）
-// 每个插件一个 .db 文件，放在 db/plugins/ 下，WAL 模式
+// 每个插件一个 <slug>.db 文件，放在 db/plugins-db/ 下，WAL 模式
 import Database from 'better-sqlite3';
 import path from 'node:path';
 import fs from 'node:fs';
 
-const PLUGIN_DB_DIR = path.join(process.cwd(), 'db', 'plugins');
+const PLUGIN_DB_DIR = path.join(process.cwd(), 'db', 'plugins-db');
 
 const dbCache = new Map<string, Database.Database>();
 

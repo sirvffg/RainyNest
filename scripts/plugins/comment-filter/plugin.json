@@ -2,7 +2,7 @@
   "specVersion": "1.0",
   "slug": "comment-filter",
   "name": "评论过滤",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "垃圾评论自动审核：关键词与 IP 黑名单命中直接拒绝（beforeCommentApprove 扩展点）",
   "author": "RainyNest Team",
   "entry": "index.ts",

@@ -2,7 +2,7 @@
   "specVersion": "1.0",
   "slug": "related-posts",
   "name": "相关文章",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "按共享标签数推荐相关文章，提供 REST 查询接口",
   "author": "RainyNest Team",
   "entry": "index.ts",

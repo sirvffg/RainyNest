@@ -2,7 +2,7 @@
   "specVersion": "1.0",
   "slug": "default",
   "name": "默认主题",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "RainyNest 预装默认主题：白底蓝调极简风，响应式设计",
   "author": "RainyNest Team",
   "preview": "preview.png",

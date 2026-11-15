@@ -1,9 +1,9 @@
-// app/api/console/plugins/[slug]/config/route.ts — 插件配置保存
+// app/api/console/plugins/[slug]/config/route.ts — 插件配置保存（db/plugins-json/<slug>.config.json）
 import { NextResponse, NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requirePermission } from '@/lib/api-auth';
-import { db } from '@/lib/prisma';
 import { resetPluginCache } from '@/lib/plugin/engine';
+import { getPluginConfigStore } from '@/lib/plugin/json-store';
 
 export const runtime = 'nodejs';
 
@@ -31,16 +31,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   }
 
   try {
-    await db.plugin.upsert({
-      where: { slug },
-      update: { config: JSON.stringify(parsed.data.config) },
-      create: {
-        slug,
-        name: slug,
-        version: '0.0.0',
-        config: JSON.stringify(parsed.data.config),
-      },
-    });
+    await getPluginConfigStore(slug).replace(parsed.data.config);
   } catch (err) {
     console.error('[api/console/plugins/config] failed:', err);
     return NextResponse.json({ error: '保存插件配置失败' }, { status: 500 });

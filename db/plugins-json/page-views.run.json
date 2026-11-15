@@ -1,0 +1,9 @@
+{
+  "paths": {
+    "/console/system/themes": {
+      "count": 1,
+      "updatedAt": "2026-11-15T09:00:03.238Z"
+    }
+  },
+  "migratedFromSqlite": true
+}

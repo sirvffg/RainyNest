@@ -6,6 +6,7 @@ import { db } from '../prisma';
 import { analytics } from '../analytics';
 import { getSiteSetting } from '../site';
 import { getPluginDb } from '../plugin-db';
+import { ensurePluginConfigFile, getPluginConfigStore, getPluginJsonStore } from './json-store';
 import type {
   ExtensionHandlers,
   LoadedPlugin,
@@ -41,6 +42,19 @@ function emitEvent(name: string, data: unknown) {
   for (const fn of eventHandlers.get(name) || []) {
     try { fn(data); } catch { /* ignore */ }
   }
+}
+
+// 懒加载插件库：只有插件真正访问 ctx.pluginDb 时才打开 SQLite 文件
+// （避免给不用数据库的插件创建一堆空的 .db 占位文件）
+function lazyPluginDb(slug: string): unknown {
+  let real: ReturnType<typeof getPluginDb> | null = null;
+  return new Proxy({}, {
+    get(_target, prop) {
+      if (!real) real = getPluginDb(slug);
+      const value = Reflect.get(real as object, prop);
+      return typeof value === 'function' ? value.bind(real) : value;
+    },
+  });
 }
 
 // 扫描 + 加载所有插件（启动时调用一次）
@@ -83,19 +97,24 @@ export async function bootPlugins(): Promise<void> {
           }
 
           const mod = nodeRequire(entryPath);
-          const ctx: PluginContext = {
+          // 配置数据：db/plugins-json/<slug>.config.json（首次启动用包内默认 config.json 初始化）
+          const pluginDir = path.join(PLUGINS_DIR, dir);
+          await ensurePluginConfigFile(dir, pluginDir);
+          const pluginConfig = await getPluginConfigStore(dir).get();
+          const ctx = {
             // 宿主生成客户端/站点设置与 SPI 结构化类型对齐（经 unknown 转换）
             db: db as unknown as PluginContext['db'],
             analytics: analytics as unknown as PluginContext['analytics'],
-            pluginDb: getPluginDb(dir) as unknown as PluginContext['pluginDb'],
+            pluginDb: lazyPluginDb(dir) as unknown as PluginContext['pluginDb'],
+            pluginJson: getPluginJsonStore(dir),
             slug: dir,
             version: meta.version,
-            config: dbEntry?.config ? JSON.parse(dbEntry.config) : {},
+            config: pluginConfig,
             site: (await getSiteSetting()) as unknown as PluginContext['site'],
             env: process.env,
             logger: createPluginLogger(dir),
             emitEvent,
-          };
+          } as unknown as PluginContext;
 
           const handlers: ExtensionHandlers =
             typeof mod.default === 'function' ? mod.default(ctx) : {};
@@ -113,10 +132,11 @@ export async function bootPlugins(): Promise<void> {
     for (const p of plugins) {
       if (p.handlers.onMount) {
         try {
-          await p.handlers.onMount({
+          const mountCtx = {
             db: db as unknown as PluginContext['db'],
             analytics: analytics as unknown as PluginContext['analytics'],
-            pluginDb: getPluginDb(p.slug) as unknown as PluginContext['pluginDb'],
+            pluginDb: lazyPluginDb(p.slug) as unknown as PluginContext['pluginDb'],
+            pluginJson: getPluginJsonStore(p.slug),
             site: (await getSiteSetting()) as unknown as PluginContext['site'],
             slug: p.slug,
             version: p.meta.version,
@@ -124,7 +144,8 @@ export async function bootPlugins(): Promise<void> {
             env: process.env,
             logger: createPluginLogger(p.slug),
             emitEvent,
-          });
+          } as unknown as PluginContext;
+          await p.handlers.onMount(mountCtx);
         } catch (err) {
           console.error(`[Plugin] ${p.slug} onMount failed:`, err);
         }
