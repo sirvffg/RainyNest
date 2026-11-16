@@ -7,7 +7,7 @@ import Modal from '@/components/admin/Modal';
 import ConfigForm, { buildDefaultConfig, type ConfigSchema } from '@/components/admin/ConfigForm';
 
 interface PluginItem {
-  id: string;
+  id?: string;
   slug: string;
   name: string;
   version: string;
@@ -195,7 +195,7 @@ function PluginsContent() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 stagger">
           {list.map((plugin) => (
             <div
-              key={plugin.id}
+              key={plugin.slug}
               className={`rounded-lg border bg-bg p-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
                 plugin.isActive ? 'border-primary/60 ring-1 ring-primary/20' : 'border-line'
               }`}

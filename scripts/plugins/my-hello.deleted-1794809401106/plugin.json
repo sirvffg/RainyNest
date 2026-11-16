@@ -1,0 +1,36 @@
+{
+    "slug":  "my-hello",
+    "name":  "my-hello",
+    "version":  "0.1.2",
+    "description":  "插件描述",
+    "author":  "",
+    "specVersion":  "1.0",
+    "requiresCore":  "\u003e=1.0.0",
+    "entry":  "index.ts",
+    "permissions":  [
+
+                    ],
+    "roleTemplates":  [
+
+                      ],
+    "database":  {
+                     "enabled":  false
+                 },
+    "configSchema":  {
+                         "basic":  {
+                                       "label":  "基础",
+                                       "fields":  {
+                                                      "enabled":  {
+                                                                      "type":  "switch",
+                                                                      "label":  "启用",
+                                                                      "default":  true
+                                                                  },
+                                                      "message":  {
+                                                                      "type":  "text",
+                                                                      "label":  "提示语",
+                                                                      "default":  "Hello from my-hello!"
+                                                                  }
+                                                  }
+                                   }
+                     }
+}

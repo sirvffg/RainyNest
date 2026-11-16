@@ -3,6 +3,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { requirePermission } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
 import { resetPluginCache } from '@/lib/plugin/engine';
+import { revalidateSitePages } from '@/lib/ext-installer';
 
 export const runtime = 'nodejs';
 
@@ -27,5 +28,6 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
   }
 
   resetPluginCache();
+  revalidateSitePages();
   return NextResponse.json({ ok: true, slug, isActive: false });
 }

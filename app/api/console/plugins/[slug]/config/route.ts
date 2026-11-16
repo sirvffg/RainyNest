@@ -3,6 +3,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requirePermission } from '@/lib/api-auth';
 import { resetPluginCache } from '@/lib/plugin/engine';
+import { revalidateSitePages } from '@/lib/ext-installer';
 import { getPluginConfigStore } from '@/lib/plugin/json-store';
 
 export const runtime = 'nodejs';
@@ -38,5 +39,6 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   }
 
   resetPluginCache();
+  revalidateSitePages();
   return NextResponse.json({ ok: true });
 }

@@ -10,7 +10,7 @@ import { db } from '@/lib/prisma';
 import { resetPluginCache } from '@/lib/plugin/engine';
 import { closePluginDb } from '@/lib/plugin-db';
 import { deletePluginJsonFiles } from '@/lib/plugin/json-store';
-import { rmDirSafe } from '@/lib/ext-installer';
+import { rmDirSafe, revalidateSitePages } from '@/lib/ext-installer';
 
 export const runtime = 'nodejs';
 
@@ -62,6 +62,7 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
   }
 
   resetPluginCache();
+  revalidateSitePages();
   console.log(`[Plugin] ${slug} 已卸载（${keepData ? '保留数据' : '数据已删除'}）`);
   return NextResponse.json({ ok: true, slug, keepData });
 }

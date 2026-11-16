@@ -16,6 +16,10 @@ function HeadItem({ html }: { html: string }) {
   if (styleMatch) {
     return <style {...parseAttrs(styleMatch[1])} dangerouslySetInnerHTML={{ __html: styleMatch[2] }} />;
   }
+  const scriptMatch = html.match(/^<script([^>]*)>([\s\S]*?)<\/script>\s*$/);
+  if (scriptMatch) {
+    return <script {...parseAttrs(scriptMatch[1])} dangerouslySetInnerHTML={{ __html: scriptMatch[2] }} />;
+  }
   const metaMatch = html.match(/^<meta\s+([^>]*?)\/?>\s*$/);
   if (metaMatch) {
     return <meta {...parseAttrs(metaMatch[1])} />;
@@ -24,7 +28,7 @@ function HeadItem({ html }: { html: string }) {
   if (linkMatch) {
     return <link {...parseAttrs(linkMatch[1])} />;
   }
-  // 无法识别的标签：忽略（避免把原始 HTML 字符串塞进 head）
+  // 无法识别的标签（含 HTML 注释）：忽略（避免把原始 HTML 字符串塞进 head）
   return null;
 }
 

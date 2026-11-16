@@ -45,6 +45,7 @@ export async function GET() {
     const dbEntry = bySlug.get(slug);
     list.push({
       ...meta,
+      id: dbEntry?.id ?? undefined,
       isActive: dbEntry?.isActive ?? false,
       config: await getPluginConfigStore(slug).get(),
       source: dbEntry?.source ?? 'builtin',

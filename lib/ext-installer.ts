@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { revalidatePath } from 'next/cache';
 import AdmZip from 'adm-zip';
 import { db } from './prisma';
 import { reloadPlugin } from './plugin/engine';
@@ -99,6 +100,12 @@ function compareVersions(a: string, b: string): number {
 
 // 目录名匹配安装器产生的临时目录（备份/待删），列表扫描时跳过
 const TEMP_DIR_RE = /(\.bak-\d+|\.deleted-\d+)$/;
+
+// 扩展安装态变化（安装/升级/卸载/配置/启停）后让全站静态页重新生成，
+// 否则 injectHead / 主题样式等运行时内容在预渲染页面上不会出现
+export function revalidateSitePages(): void {
+  revalidatePath('/', 'layout');
+}
 
 // 安全删除目录：Windows 下 rmSync 可能因句柄占用静默失败（内容仍在），
 // 先直接删；不行则改名为 .deleted-xxx（rename 不受读句柄影响）再删；仍失败留待启动清扫
@@ -255,6 +262,7 @@ export async function installFromBuffer(buffer: Buffer, filename: string, opts: 
     if (backupDir) rmDirSafe(backupDir);
 
     console.log(`[Installer] ${kind} ${slug} v${manifest.version} ${upgraded ? '升级' : '安装'}成功`);
+    revalidateSitePages();
     return { kind, slug, version: manifest.version, upgraded };
   } finally {
     if (backupDir && fs.existsSync(backupDir)) {

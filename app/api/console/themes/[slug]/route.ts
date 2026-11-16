@@ -7,7 +7,7 @@ import path from 'node:path';
 import { requirePermission } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
 import { clearThemeCache } from '@/lib/theme';
-import { rmDirSafe } from '@/lib/ext-installer';
+import { rmDirSafe, revalidateSitePages } from '@/lib/ext-installer';
 
 export const runtime = 'nodejs';
 
@@ -45,6 +45,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   }
 
   clearThemeCache();
+  revalidateSitePages();
   console.log(`[Theme] ${slug} 已卸载`);
   return NextResponse.json({ ok: true, slug });
 }
