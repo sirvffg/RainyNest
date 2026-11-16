@@ -8,7 +8,7 @@ import ConfigForm, { buildDefaultConfig, type ConfigSchema } from '@/components/
 
 interface PluginItem {
   id?: string;
-  slug: string;
+   slug: string;
   name: string;
   version: string;
   description?: string | null;
