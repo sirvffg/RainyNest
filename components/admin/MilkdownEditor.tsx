@@ -1,5 +1,5 @@
 // components/admin/MilkdownEditor.tsx — Milkdown 可视化 Markdown 编辑器（所见即所得）
-// vanilla 挂载：defaultValueCtx 设初值，listener markdownUpdated 同步回父组件
+// 粘贴纯 Markdown 自动解析为结构节点，避免 ProseMirror 全量转义
 'use client';
 
 import { useEffect, useRef } from 'react';
@@ -7,6 +7,7 @@ import { Editor, rootCtx, defaultValueCtx } from '@milkdown/kit/core';
 import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
+import { looksLikeMarkdown, markdownToHtml } from '@/lib/markdown/paste-convert';
 import '@milkdown/kit/prose/view/style/prosemirror.css';
 
 export default function MilkdownEditor({
@@ -28,6 +29,32 @@ export default function MilkdownEditor({
 
     let disposed = false;
     let editorInstance: Editor | null = null;
+
+    // ── 粘贴拦截：纯 Markdown → HTML，让 ProseMirror 解析为节点结构 ──
+    const handlePaste = async (e: ClipboardEvent) => {
+      const plain = e.clipboardData?.getData('text/plain');
+      if (!plain || !looksLikeMarkdown(plain)) return;
+      // 已有 HTML 版本（从富文本复制过来）就不走我们的转换
+      if (e.clipboardData?.types.includes('text/html')) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      try {
+        const html = await markdownToHtml(plain);
+        // 用原生方法把 HTML 插入到 contenteditable（Milkdown 底层是 ProseMirror contenteditable）
+        // 先聚焦确保插入位置正确
+        const active = document.activeElement as HTMLElement | null;
+        if (active?.isContentEditable) {
+          document.execCommand('insertHTML', false, html);
+        }
+      } catch (err) {
+        console.warn('[Milkdown] Markdown paste fallback failed:', err);
+      }
+    };
+
+    // capture 阶段拦截，比 ProseMirror 自己的 paste handler 早
+    root.addEventListener('paste', handlePaste, true);
 
     Editor.make()
       .config((ctx) => {
@@ -51,6 +78,7 @@ export default function MilkdownEditor({
 
     return () => {
       disposed = true;
+      root.removeEventListener('paste', handlePaste, true);
       try {
         editorInstance?.destroy();
       } catch {
