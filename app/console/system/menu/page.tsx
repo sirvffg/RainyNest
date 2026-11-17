@@ -119,6 +119,13 @@ function MenuContent() {
 
   /** 按新顺序回写同级兄弟（拖拽与上下移动共用） */
   async function persistOrder(siblings: MenuNode[]) {
+    // 乐观更新：先本地改，再异步持久化
+    const siblingIds = new Set(siblings.map((s) => s.id));
+    setList((prev) => {
+      const others = prev.filter((m) => !siblingIds.has(m.id));
+      const withNewOrder = siblings.map((m, i) => ({ ...m, order: i }));
+      return [...others, ...withNewOrder].sort((a, b) => a.order - b.order);
+    });
     try {
       await Promise.all(
         siblings.map((m, i) =>
@@ -130,9 +137,9 @@ function MenuContent() {
         )
       );
       toast('排序已更新');
-      load();
     } catch {
       toast('排序失败 请稍后重试', 'error');
+      load(); // 失败才回滚刷新
     }
   }
 
@@ -219,26 +226,42 @@ function MenuContent() {
       if (!res.ok) throw new Error(String(res.status));
       toast(editing ? '菜单已更新' : '菜单已创建');
       setModalOpen(false);
-      load();
+      // 乐观更新列表，不刷新
+      if (editing) {
+        setList((prev) => prev.map((m) => (m.id === editing.id ? { ...m, ...body } : m)));
+      } else {
+        const data = await res.json().catch(() => null);
+        const newItem: MenuNode = {
+          id: data?.id ?? crypto.randomUUID(),
+          name: body.name,
+          url: body.url,
+          icon: body.icon ?? null,
+          order: body.order,
+          parentId: body.parentId,
+        };
+        setList((prev) => [...prev, newItem].sort((a, b) => a.order - b.order));
+      }
     } catch {
       toast('保存失败 请稍后重试', 'error');
+      load();
     }
     setSaving(false);
   }
 
   async function handleDelete() {
     if (!deleteTarget || deleting) return;
-    setDeleting(true);
+    const idToRemove = deleteTarget.id;
+    setDeleteTarget(null);
+    // 乐观更新：先从列表移除（包括子级）
+    setList((prev) => prev.filter((m) => m.id !== idToRemove && m.parentId !== idToRemove));
     try {
-      const res = await fetch(`/api/menu/${deleteTarget.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/menu/${idToRemove}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(String(res.status));
       toast('菜单已删除');
-      setDeleteTarget(null);
-      load();
     } catch {
       toast('删除失败 请稍后重试', 'error');
+      load(); // 失败回滚
     }
-    setDeleting(false);
   }
 
   /** 可选父级 仅顶级菜单 排除自身与直接子级 避免成环 */
