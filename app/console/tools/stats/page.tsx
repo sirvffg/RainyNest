@@ -17,7 +17,7 @@ interface TopPost {
 }
 
 interface SourceItem {
-  source: string;
+  referer: string;
   count: number;
 }
 
@@ -314,9 +314,9 @@ function SourcesSection({ sources }: { sources: SourceItem[] }) {
       ) : (
         <div className="mt-4 space-y-3 stagger">
           {sources.map((s) => (
-            <div key={s.source} className="group">
+            <div key={s.referer || 'direct'} className="group">
               <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="min-w-0 truncate">{s.source || '直接访问'}</span>
+                <span className="min-w-0 truncate">{s.referer || '直接访问'}</span>
                 <span className="shrink-0 text-xs text-fg-muted">
                   {Number(s.count || 0).toLocaleString('zh-CN')} · {Math.round(((s.count || 0) / total) * 100)}%
                 </span>
