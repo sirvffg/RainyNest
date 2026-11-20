@@ -8,6 +8,7 @@ interface PendingPV {
   postSlug: string | null;
   sessionId: string;
   ip: string;
+  country: string | null;
   userAgent: string;
   referer: string;
   createdAt: Date;
@@ -74,6 +75,7 @@ async function flush() {
         postId: pv.postSlug ? await getPostIdBySlug(pv.postSlug) : null,
         sessionId: pv.sessionId || null,
         ip: pv.ip,
+        country: pv.country,
         userAgent: (pv.userAgent || '').slice(0, 500),
         referer: (pv.referer || '').slice(0, 500),
         createdAt: pv.createdAt,

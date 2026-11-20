@@ -145,12 +145,6 @@ function LinksContent() {
 
   return (
     <div className="space-y-6">
-      {/* 页头 */}
-      <div className="anim-fade-in-up">
-        <h1 className="text-2xl font-bold">友链管理</h1>
-        <p className="mt-1 text-sm text-fg-muted">维护站点友邻 静候光临</p>
-      </div>
-
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
         {/* 左侧表单 */}
         <form

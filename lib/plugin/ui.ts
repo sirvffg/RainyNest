@@ -2,7 +2,7 @@
 // 插件组件不在 Next RSC 模块图内，统一走 renderToStaticMarkup
 import 'server-only';
 import type { ReactNode } from 'react';
-import { bootPlugins, getLoadedPlugins, fireExtensionPoint } from './engine';
+import { bootPlugins, getLoadedPlugins, fireExtensionPoint, collectPluginDefinitions } from './engine';
 import type { ListItemOperationDef } from './types';
 
 // Turbopack 禁止 RSC 静态 import react-dom/server → 运行时 require 绕过
@@ -109,21 +109,237 @@ export interface PluginPostOperation {
 }
 
 export async function collectPostOperations(): Promise<PluginPostOperation[]> {
+  return collectListOperations('postListItemOperation');
+}
+
+// 通用列表行操作收集（文章/页面/评论/回复/插件/主题/附件/备份）
+export type ListOperationPoint =
+  | 'postListItemOperation'
+  | 'pageListItemOperation'
+  | 'commentListItemOperation'
+  | 'replyListItemOperation'
+  | 'pluginListItemOperation'
+  | 'themeListItemOperation'
+  | 'attachmentListItemOperation'
+  | 'backupListItemOperation';
+
+export async function collectListOperations(point: ListOperationPoint): Promise<PluginPostOperation[]> {
+  try {
+    const defs = await collectPluginDefinitions(point);
+    return defs.map(({ pluginSlug, def }) => ({
+      slug: pluginSlug,
+      label: (def as ListItemOperationDef).label,
+      icon: (def as ListItemOperationDef).icon,
+      variant: (def as ListItemOperationDef).variant ?? 'default',
+      hrefTemplate: (def as ListItemOperationDef).onClick ?? '',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ── injectHeaderAction：顶栏按钮（返回结构化数据，由 Header 渲染）──
+export async function collectHeaderActions(): Promise<
+  { pluginSlug: string; key: string; label: string; icon?: string; href?: string; order: number }[]
+> {
+  try {
+    const defs = await collectPluginDefinitions('injectHeaderAction');
+    return defs
+      .map(({ pluginSlug, def }) => ({
+        pluginSlug,
+        key: def.key,
+        label: def.label,
+        icon: def.icon,
+        href: def.href,
+        order: def.order ?? 0,
+      }))
+      .sort((a, b) => a.order - b.order);
+  } catch {
+    return [];
+  }
+}
+
+// ── injectSinglePageContent：独立页面底部追加块 ──
+export async function collectSinglePageContentHtml(): Promise<string[]> {
   try {
     await bootPlugins();
-    const ops: PluginPostOperation[] = [];
+    const blocks: string[] = [];
     for (const plugin of getLoadedPlugins()) {
-      for (const def of plugin.handlers.postListItemOperation ?? []) {
-        ops.push({
-          slug: plugin.slug,
-          label: def.label,
-          icon: def.icon,
-          variant: def.variant ?? 'default',
-          hrefTemplate: def.onClick ?? '',
-        });
+      for (const comp of plugin.handlers.injectSinglePageContent?.() ?? []) {
+        try {
+          blocks.push(await renderComponentHtml(comp));
+        } catch (err) {
+          console.error(`[Plugin] ${plugin.slug} injectSinglePageContent failed:`, err);
+        }
       }
     }
-    return ops;
+    return blocks;
+  } catch {
+    return [];
+  }
+}
+
+// ── injectCommentField：评论表单额外字段（结构化，前端动态渲染）──
+export async function collectCommentFields(): Promise<import('./types').CommentFieldDef[]> {
+  try {
+    const defs = await collectPluginDefinitions('injectCommentField');
+    return defs.flatMap(({ def }) => (Array.isArray(def) ? def : [def]));
+  } catch {
+    return [];
+  }
+}
+
+// ── editorCreate：编辑器工具按钮（结构化，前端渲染）──
+export async function collectEditorActions(): Promise<
+  (import('./types').EditorActionDef & { pluginSlug: string })[]
+> {
+  try {
+    const defs = await collectPluginDefinitions('editorCreate');
+    return defs.flatMap(({ pluginSlug, def }) =>
+      (Array.isArray(def) ? def : [def]).map((d) => ({ ...d, pluginSlug }))
+    );
+  } catch {
+    return [];
+  }
+}
+
+// ── dashboardQuickAction：仪表盘快捷入口 ──
+export async function collectQuickActions(): Promise<import('./types').QuickActionDef[]> {
+  try {
+    const defs = await collectPluginDefinitions('dashboardQuickAction');
+    return defs.flatMap(({ def }) => (Array.isArray(def) ? def : [def]));
+  } catch {
+    return [];
+  }
+}
+
+// ── 列表字段列（文章/页面/插件）──
+export interface ResolvedListField {
+  pluginSlug: string;
+  key: string;
+  label: string;
+  width?: number;
+  sortable?: boolean;
+  render: (item: Record<string, any>) => unknown;
+}
+
+export type ListFieldPoint = 'postListItemField' | 'pageListItemField' | 'pluginListItemField';
+
+export async function collectListFields(point: ListFieldPoint): Promise<ResolvedListField[]> {
+  try {
+    const defs = await collectPluginDefinitions(point);
+    return defs.map(({ pluginSlug, def }) => ({
+      pluginSlug,
+      key: def.key,
+      label: def.label,
+      width: def.width,
+      sortable: def.sortable,
+      render: def.render,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// 渲染一行插件字段值（失败时留空，不影响主表格）
+export async function renderListFieldValues(
+  fields: ResolvedListField[],
+  item: Record<string, any>
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const field of fields) {
+    try {
+      const v = await field.render(item);
+      out[field.key] = v === null || v === undefined ? '' : String(v);
+    } catch {
+      out[field.key] = '';
+    }
+  }
+  return out;
+}
+
+// ── Tab 注入（插件详情/主题列表/附件选择器/插件安装/备份/用户详情）──
+export type TabPoint =
+  | 'pluginDetailTab'
+  | 'themeListTab'
+  | 'attachmentSelectorTab'
+  | 'pluginInstallTab'
+  | 'backupTab'
+  | 'userDetailTab';
+
+export interface RenderedTab {
+  pluginSlug: string;
+  key: string;
+  label: string;
+  icon?: string;
+  html: string;
+}
+
+export async function collectTabs(point: TabPoint): Promise<RenderedTab[]> {
+  try {
+    const defs = await collectPluginDefinitions(point);
+    const tabs: RenderedTab[] = [];
+    for (const { pluginSlug, def } of defs) {
+      try {
+        tabs.push({
+          pluginSlug,
+          key: def.key,
+          label: def.label,
+          icon: def.icon,
+          html: await renderComponentHtml(def.component),
+        });
+      } catch (err) {
+        console.error(`[Plugin] ${pluginSlug} ${point} render failed:`, err);
+      }
+    }
+    return tabs;
+  } catch {
+    return [];
+  }
+}
+
+// ── 评论编辑器 / 评论内容渲染替换（第一个提供者生效）──
+export async function getCommentEditorHtml(): Promise<string | null> {
+  try {
+    await bootPlugins();
+    for (const plugin of getLoadedPlugins()) {
+      const comp = plugin.handlers.commentEditorReplace?.();
+      if (comp) {
+        try {
+          return await renderComponentHtml(comp);
+        } catch (err) {
+          console.error(`[Plugin] ${plugin.slug} commentEditorReplace failed:`, err);
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+export async function getCommentContentRendererHtml(): Promise<string | null> {
+  try {
+    await bootPlugins();
+    for (const plugin of getLoadedPlugins()) {
+      const comp = plugin.handlers.commentListItemContentReplace?.();
+      if (comp) {
+        try {
+          return await renderComponentHtml(comp);
+        } catch (err) {
+          console.error(`[Plugin] ${plugin.slug} commentListItemContentReplace failed:`, err);
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+// ── commentSubjectRef：评论来源展示方式 ──
+export async function collectCommentSubjectRefs(): Promise<
+  import('./types').CommentSubjectRefDef[]
+> {
+  try {
+    const defs = await collectPluginDefinitions('commentSubjectRef');
+    return defs.flatMap(({ def }) => (Array.isArray(def) ? def : [def]));
   } catch {
     return [];
   }

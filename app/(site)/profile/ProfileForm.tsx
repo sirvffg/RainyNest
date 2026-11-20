@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Mail, Link2, FileText, KeyRound, Save, CircleUserRound } from 'lucide-react';
+import { User, Mail, Link2, FileText, KeyRound, Save, CircleUserRound, MonitorSmartphone, LogOut } from 'lucide-react';
 
 interface ProfileData {
   username: string;
@@ -13,6 +13,16 @@ interface ProfileData {
   createdAt: string;
   lastLoginAt: string | null;
   roles: string[];
+}
+
+interface SessionItem {
+  id: string;
+  device: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  lastActiveAt: string;
+  expiresAt: string;
+  current: boolean;
 }
 
 const inputCls =
@@ -36,6 +46,11 @@ export default function ProfileForm() {
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pwdSaving, setPwdSaving] = useState(false);
 
+  // 登录设备
+  const [sessions, setSessions] = useState<SessionItem[] | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [sessionMsg, setSessionMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   useEffect(() => {
     fetch('/api/profile')
       .then(async (res) => {
@@ -54,6 +69,34 @@ export default function ProfileForm() {
         window.location.href = '/signin?redirect=/profile';
       });
   }, []);
+
+  // 加载登录设备列表
+  useEffect(() => {
+    fetch('/api/profile/sessions')
+      .then(async (res) => (res.ok ? res.json() : null))
+      .then((data) => setSessions(Array.isArray(data?.list) ? data.list : []))
+      .catch(() => setSessions([]));
+  }, []);
+
+  async function revokeSession(session: SessionItem) {
+    if (revoking) return;
+    setRevoking(session.id);
+    setSessionMsg(null);
+    try {
+      const res = await fetch('/api/profile/sessions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.id }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || '下线失败');
+      setSessions((list) => (list ? list.filter((item) => item.id !== session.id) : list));
+      setSessionMsg({ ok: true, text: '该设备已下线' });
+    } catch (err) {
+      setSessionMsg({ ok: false, text: err instanceof Error ? err.message : '下线失败 请稍后重试' });
+    }
+    setRevoking(null);
+  }
 
   async function saveInfo(e: React.FormEvent) {
     e.preventDefault();
@@ -274,6 +317,62 @@ export default function ProfileForm() {
           {pwdSaving ? '提交中...' : '确认修改'}
         </button>
       </form>
+
+      {/* 登录设备 */}
+      <div
+        className="rounded-lg border border-line bg-bg p-6 space-y-4 shadow-sm anim-fade-in-up"
+        style={{ animationDelay: '0.3s' }}
+      >
+        <h2 className="font-semibold flex items-center gap-2 text-sm">
+          <MonitorSmartphone className="w-4 h-4 text-primary" /> 登录设备
+        </h2>
+
+        {sessions === null ? (
+          <div className="space-y-2">
+            <div className="skeleton h-14" />
+            <div className="skeleton h-14" />
+          </div>
+        ) : sessions.length === 0 ? (
+          <p className="text-sm text-fg-muted">暂无登录设备记录</p>
+        ) : (
+          <div className="divide-y divide-line">
+            {sessions.map((item) => (
+              <div key={item.id} className="flex items-center gap-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{item.device || '未知设备'}</span>
+                    {item.current && (
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">当前设备</span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-fg-muted">
+                    {item.ip || '未知 IP'} · 最近活跃 {fmtDate(item.lastActiveAt)}
+                  </p>
+                  {item.userAgent && (
+                    <p className="mt-0.5 truncate text-[11px] text-fg-muted/70" title={item.userAgent}>
+                      {item.userAgent}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={item.current || revoking !== null}
+                  onClick={() => revokeSession(item)}
+                  title={item.current ? '当前设备不可下线' : '下线该设备'}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-line px-2.5 py-1.5 text-xs text-fg-muted transition-all duration-200 hover:border-red-300 hover:text-red-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  {revoking === item.id ? '下线中' : '下线'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {sessionMsg && (
+          <p className={`text-sm anim-fade-in ${sessionMsg.ok ? 'text-primary' : 'text-red-500'}`}>{sessionMsg.text}</p>
+        )}
+      </div>
     </div>
   );
 }

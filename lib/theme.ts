@@ -65,6 +65,42 @@ export function mergeWithDefault(schema: Record<string, any>, userConfig: Record
 const g = globalThis as unknown as { __rnActiveTheme?: { value: ActiveTheme | null; at: number } };
 const THEME_CACHE_TTL = 30_000;
 
+// 按 slug 读取磁盘 theme.json + DB 配置，生成 ActiveTheme（不校验 isActive）
+function loadThemeBySlugSync(slug: string, dbTheme: { id: string; config: string | null } | null): ActiveTheme | null {
+  // 1. 读取 theme.json 元数据（目录不存在视为未安装）
+  const jsonPath = path.join(THEMES_DIR, slug, 'theme.json');
+  if (!fs.existsSync(jsonPath)) return null;
+  const meta: ThemeMeta = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+
+  // 2. 加载 theme.js 的 configToCssVariables
+  let configToVars: (config: Record<string, any>) => Record<string, string> = () => ({});
+  try {
+    const compiledTheme = path.join(THEMES_DIR, slug, 'theme.js');
+    if (fs.existsSync(compiledTheme)) {
+      const mod = nodeRequire(compiledTheme);
+      configToVars = mod.configToCssVariables || configToVars;
+    }
+  } catch { /* 主题没有 theme.js，用默认映射 */ }
+
+  // 3. 合并 DB 存的配置值 + theme.json 默认值
+  const mergedConfig = mergeWithDefault(
+    meta.configSchema,
+    dbTheme?.config ? JSON.parse(dbTheme.config) : {}
+  );
+
+  // 4. 生成 CSS 变量
+  const cssVars = configToVars(mergedConfig);
+
+  return {
+    ...meta,
+    dbId: dbTheme?.id ?? '',
+    config: mergedConfig,
+    cssVars,
+    customCss: mergedConfig.advanced?.customCss,
+    customJs: mergedConfig.advanced?.customJs,
+  };
+}
+
 // 获取当前激活主题（DB + 预编译 theme.js 配置映射）
 export async function getActiveTheme(): Promise<ActiveTheme | null> {
   const cached = g.__rnActiveTheme;
@@ -75,39 +111,8 @@ export async function getActiveTheme(): Promise<ActiveTheme | null> {
     // 1. 从数据库找 isActive = true 的主题
     const dbTheme = await db.theme.findFirst({ where: { isActive: true } });
     if (dbTheme) {
-      // 2. 读取 theme.json 元数据
-      const jsonPath = path.join(THEMES_DIR, dbTheme.slug, 'theme.json');
-      if (fs.existsSync(jsonPath)) {
-        const meta: ThemeMeta = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-
-        // 3. 加载 theme.js 的 configToCssVariables
-        let configToVars = (config: any) => ({});
-        try {
-          const compiledTheme = path.join(THEMES_DIR, dbTheme.slug, 'theme.js');
-          if (fs.existsSync(compiledTheme)) {
-            const mod = nodeRequire(compiledTheme);
-            configToVars = mod.configToCssVariables || configToVars;
-          }
-        } catch { /* 主题没有 theme.js，用默认映射 */ }
-
-        // 4. 合并 DB 存的配置值 + theme.json 默认值
-        const mergedConfig = mergeWithDefault(
-          meta.configSchema,
-          dbTheme.config ? JSON.parse(dbTheme.config) : {}
-        );
-
-        // 5. 生成 CSS 变量
-        const cssVars = configToVars(mergedConfig);
-
-        theme = {
-          ...meta,
-          dbId: dbTheme.id,
-          config: mergedConfig,
-          cssVars,
-          customCss: mergedConfig.advanced?.customCss,
-          customJs: mergedConfig.advanced?.customJs,
-        };
-      }
+      // 2. 读取磁盘元数据 + 合并配置（不依赖激活状态）
+      theme = loadThemeBySlugSync(dbTheme.slug, dbTheme);
     }
   } catch {
     theme = null;
@@ -115,6 +120,17 @@ export async function getActiveTheme(): Promise<ActiveTheme | null> {
 
   g.__rnActiveTheme = { value: theme, at: Date.now() };
   return theme;
+}
+
+// 按 slug 获取任意已安装主题（在线预览用，不要求 isActive）
+export async function getThemeBySlug(slug: string): Promise<ActiveTheme | null> {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) return null;
+  try {
+    const dbTheme = await db.theme.findUnique({ where: { slug } });
+    return loadThemeBySlugSync(slug, dbTheme);
+  } catch {
+    return null;
+  }
 }
 
 export function clearThemeCache() {

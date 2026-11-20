@@ -368,11 +368,7 @@ function MenuContent() {
   return (
     <div className="space-y-6">
       {/* 页头 */}
-      <div className="flex flex-wrap items-center justify-between gap-3 anim-fade-in-up">
-        <div>
-          <h1 className="text-2xl font-bold">菜单管理</h1>
-          <p className="mt-1 text-sm text-fg-muted">调整前台导航结构 支持二级菜单</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3 anim-fade-in-up">
         <button
           type="button"
           onClick={() => openCreate()}

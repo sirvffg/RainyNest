@@ -5,7 +5,7 @@ import { db } from '@/lib/prisma';
 import { getSiteSetting } from '@/lib/site';
 import PostCard, { type PostCardData } from '@/components/post/PostCard';
 
-export const revalidate = 3600;
+export const revalidate = 300;
 
 export default async function HomePage() {
   const site = await getSiteSetting();

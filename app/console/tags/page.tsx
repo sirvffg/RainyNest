@@ -3,8 +3,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Inbox, Loader2, Pencil, Plus, Save, Tags as TagsIcon, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, Inbox, Loader2, Pencil, Plus, Save, Tags as TagsIcon, Trash2 } from 'lucide-react';
 import ConfirmDialog from '@/components/admin/ConfirmDialog';
+import Modal from '@/components/admin/Modal';
 import { api, pickList, slugify } from '@/components/admin/utils';
 
 interface TagItem {
@@ -27,6 +28,11 @@ export default function TagsPage() {
   const [error, setError] = useState('');
   const [confirmTarget, setConfirmTarget] = useState<TagItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // 合并标签
+  const [mergeSource, setMergeSource] = useState<TagItem | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [merging, setMerging] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,13 +107,39 @@ export default function TagsPage() {
     setDeleting(false);
   }
 
+  function openMerge(tag: TagItem) {
+    setMergeSource(tag);
+    setMergeTargetId('');
+    setError('');
+  }
+
+  async function handleMerge() {
+    if (!mergeSource || !mergeTargetId || merging) return;
+    setMerging(true);
+    setError('');
+    try {
+      const result = await api<{ moved?: number; target?: string }>('/api/tags/merge', {
+        method: 'POST',
+        body: JSON.stringify({ sourceId: mergeSource.id, targetId: mergeTargetId }),
+      });
+      setNotice(`已合并「${mergeSource.name}」到「${result.target ?? ''}」，迁移 ${result.moved ?? 0} 篇文章关联`);
+      if (editingId === mergeSource.id) resetForm();
+      setMergeSource(null);
+      setMergeTargetId('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '合并失败');
+    }
+    setMerging(false);
+  }
+
   return (
     <div className="space-y-5">
-      <div className="anim-fade-in-up">
-        <h1 className="text-2xl font-bold">标签管理</h1>
-        <p className="mt-1 text-sm text-fg-muted">为文章打上灵活的关键词</p>
-      </div>
-
+      {notice && (
+        <div className="anim-fade-in rounded border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
+          {notice}
+        </div>
+      )}
       <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
         {/* 表单 */}
         <form
@@ -204,6 +236,13 @@ export default function TagsPage() {
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
+                      onClick={() => openMerge(t)}
+                      title="合并到其他标签"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded text-fg-muted transition-all duration-200 hover:bg-bg-secondary hover:text-primary active:scale-90"
+                    >
+                      <ArrowRightLeft className="h-4 w-4" />
+                    </button>
+                    <button
                       onClick={() => setConfirmTarget(t)}
                       title="删除"
                       className="inline-flex h-8 w-8 items-center justify-center rounded text-fg-muted transition-all duration-200 hover:bg-red-50 hover:text-red-500 active:scale-90"
@@ -227,6 +266,58 @@ export default function TagsPage() {
         onConfirm={handleDelete}
         onCancel={() => setConfirmTarget(null)}
       />
+
+      {/* 合并标签 */}
+      <Modal
+        open={!!mergeSource}
+        onClose={merging ? () => {} : () => setMergeSource(null)}
+        title="合并标签"
+        maxWidth="max-w-sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setMergeSource(null)}
+              disabled={merging}
+              className="rounded border border-line px-4 py-2 text-sm transition-all duration-200 hover:bg-bg-secondary active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleMerge}
+              disabled={merging || !mergeTargetId}
+              className="liquid-btn liquid-btn-sm inline-flex items-center gap-1.5 disabled:cursor-not-allowed"
+            >
+              {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />}
+              合并
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-fg-muted">
+            将标签「{mergeSource?.name}」下的文章关联迁移到目标标签，然后删除该标签。
+          </p>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-fg-muted">合并到</label>
+            <select
+              value={mergeTargetId}
+              onChange={(e) => setMergeTargetId(e.target.value)}
+              className={`${INPUT_CLS} cursor-pointer`}
+            >
+              <option value="">请选择目标标签</option>
+              {list
+                .filter((t) => t.id !== mergeSource?.id)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}（/{t.slug}）
+                  </option>
+                ))}
+            </select>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

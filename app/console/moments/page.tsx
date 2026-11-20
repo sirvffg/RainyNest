@@ -119,11 +119,6 @@ export default function MomentsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="anim-fade-in-up">
-        <h1 className="text-2xl font-bold">说说管理</h1>
-        <p className="mt-1 text-sm text-fg-muted">记录碎片化的想法与瞬间</p>
-      </div>
-
       {/* 发布框 */}
       <div className="anim-fade-in-up rounded-lg border border-line bg-bg p-5" style={{ animationDelay: '0.05s' }}>
         <h2 className="flex items-center gap-2 text-base font-semibold">

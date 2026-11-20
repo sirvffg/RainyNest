@@ -18,6 +18,8 @@ declare module 'next-auth' {
       roles?: string[];
       permissions?: string[];
       forbidConsole?: boolean;
+      /** 当前设备的会话 token（用于"登录设备"区分当前设备） */
+      sessionToken?: string;
     } & DefaultSession['user'];
   }
 }
@@ -28,6 +30,8 @@ declare module '@auth/core/jwt' {
     roles?: string[];
     permissions?: string[];
     forbidConsole?: boolean;
+    /** 当前设备的会话 token（登录成功时写入一次） */
+    sessionToken?: string;
   }
 }
 

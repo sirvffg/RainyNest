@@ -21,6 +21,8 @@ const putSchema = z.object({
   summary: z.string().max(1000).optional().nullable(),
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
   order: z.number().int().optional(),
+  showSidebar: z.boolean().optional(),
+  sidebarContent: z.string().max(5000).optional().nullable(),
 });
 
 export async function PUT(req: NextRequest, { params }: Ctx) {

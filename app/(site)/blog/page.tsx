@@ -1,9 +1,10 @@
 // app/blog/page.tsx — 文章列表（分页，SSG + ISR）
 import Link from 'next/link';
 import { db } from '@/lib/prisma';
-import PostCard, { type PostCardData } from '@/components/post/PostCard';
+import PostList from '@/components/post/PostList';
+import type { PostCardData } from '@/components/post/PostCard';
 
-export const revalidate = 3600;
+export const revalidate = 300;
 
 const PAGE_SIZE = 12;
 
@@ -42,15 +43,9 @@ export default async function BlogListPage({
       </header>
 
       {posts.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-line p-12 text-center text-fg-muted anim-fade-in">
-          暂无文章
-        </div>
+        <PostList posts={posts} empty="暂无文章" />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {posts.map((post, i) => (
-            <PostCard key={post.id} post={post} index={i} />
-          ))}
-        </div>
+        <PostList posts={posts} />
       )}
 
       {/* 分页 */}

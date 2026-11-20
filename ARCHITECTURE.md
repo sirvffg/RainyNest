@@ -1,8 +1,10 @@
-# RainyNest 博客系统架构文档 v2.0
+# RainyNest 博客系统架构文档 v2.2
 
 > **Next.js 15 (App Router) + React 19 + TypeScript + Prisma + SQLite**
 > 参考 NovaCMS 的插件/主题架构，仿 Halo/WordPress 的主题切换体验
 > 核心目标：**SEO 友好 + 插件系统 + 主题可切换 + 轻量部署**
+>
+> **实现状态（2026-11-20）**：文中规划的功能已落地，运行时目录、扩展点、数据模型与部署文件的最终口径见 [第十五节 · 实现状态对齐](#十五实现状态对齐2026-11-20)。与本文早期设计不一致处，以第十五节为准。
 
 ***
 
@@ -18,7 +20,7 @@
 | ORM          | **Prisma 5**                         | SQLite 驱动，自动迁移                                                                                                         |
 | 数据库          | **SQLite 3**                         | 单文件，零配置                                                                                                                |
 | 认证           | **NextAuth.js 5**                    | Credentials Provider（邮箱+密码）                                                                                            |
-| Markdown     | **react-markdown + Expressive Code** | 完整移植 Firefly v6.16.9 技术栈：Expressive Code 代码高亮（行号/折叠/徽章/复制按钮）+ remark/rehype 插件链（KaTeX数学/Callouts/Tab代码块/阅读时间/双链/邮箱保护等） |
+| Markdown     | **unified + Expressive Code**        | 完整移植 Firefly v6.16.9 技术栈：服务端 unified 管线（remark/rehype，含 KaTeX/Callouts/代码分组/Admonition/Figure/双链/邮箱保护）+ Expressive Code 代码高亮（行号/折叠/复制按钮/Mermaid/PlantUML） |
 | Markdown 编辑器 | **Milkdown** 或 **Tiptap**            | 后台可视化编辑器（可插拔）                                                                                                          |
 | 校验           | **Zod**                              | API 请求体校验、插件配置校验                                                                                                       |
 | 图标           | **lucide-react**                     | 后台和前台通用                                                                                                                |
@@ -2901,11 +2903,12 @@ export async function reloadPlugins() {
 | `comment-filter`  | 垃圾评论自动审核（关键词/IP）             | beforeCommentApprove                             | ❌  |
 | `reading-time`    | 文章阅读时间显示                     | onRenderMarkdown                                 | ✅  |
 | `related-posts`   | 相关文章推荐小部件                    | injectSidebarWidget                              | ❌  |
-| `page-views`      | PV 统计（替代 PageView 表）         | onPageView                                       | ✅  |
+
+> 注：`page-views` 插件已移除——路径级 PV 统计已合并进系统统计页（`/console/tools/stats`，直接聚合 analytics 库 PageView 表）。`onPageView` 扩展点保留，供社区插件做旁路增强。
 
 ### 核心功能 vs 预装插件 vs 社区插件——三层边界
 
-**很多人第一次看这里会困惑**：访问统计明明是核心功能（sendBeacon + queue + WAL 模式），为什么又有个 `page-views` 预装插件？`injectSidebarWidget` 又和核心侧边栏组件是什么关系？
+**很多人第一次看这里会困惑**：访问统计明明是核心功能（sendBeacon + queue + WAL 模式），为什么还留一个 `onPageView` 扩展点？`injectSidebarWidget` 又和核心侧边栏组件是什么关系？
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -2916,7 +2919,7 @@ export async function reloadPlugins() {
 │  ✅ 扩展点引擎本身（fireExtensionPoint / registerHandler）           │
 │  ✅ middleware.ts（保护路由）                                       │
 │  ✅ 进程内 analytics queue（sendBeacon → enqueue → flush）            │
-│     ↑ 这层永远跑，不管有没有 page-views 插件                        │
+│     ↑ 这层永远跑，不管有没有插件消费 onPageView                     │
 │  ✅ 核心侧边栏硬编码组件（分类/标签云/最新评论/归档）                   │
 │     ↑ 这层永远渲染，不管有没有 injectSidebarWidget 插件              │
 │  ✅ 主题切换 / Markdown 渲染 / 权限检查 / NextAuth                   │
@@ -2930,9 +2933,9 @@ export async function reloadPlugins() {
 │  负责：**消费**核心的扩展点钩子，提供默认业务逻辑                      │
 │  可以禁用（但禁用后该功能就没了）                                      │
 │                                                                     │
-│  例 1: page-views（onPageView 扩展点）                               │
+│  例 1: 假想的 realtime-pv 社区插件（onPageView 扩展点）              │
 │    核心 sendBeacon queue 永远在收集 PV                               │
-│    page-views 插件注册 onPageView handler → 做额外的事               │
+│    插件注册 onPageView handler → 做额外的事                         │
 │      → 比如实时写入 Redis（给仪表盘秒级 PV）                         │
 │      → 比如发送 Webhook 到第三方分析                                 │
 │      → 核心 queue 照常跑，插件只是"旁路监听"                         │
@@ -3230,9 +3233,9 @@ async function handleRss(req: Request, ctx: PluginContext) {
 
 ---
 
-#### ④ `page-views` ✅ — PV 统计旁路增强
+#### ④ `onPageView` 扩展点示例 — PV 统计旁路增强（原 `page-views` 插件，已并入系统统计）
 
-**核心问题**：核心 analytics queue 已经在收集 PV（sendBeacon → enqueue → flush → createMany），但那是"基础版"——只写 SQLite、聚合回填主库 views。如果想做实时 PV 计数、Redis 缓存、Webhook 通知等，需要插件扩展。
+**核心问题**：核心 analytics queue 已经在收集 PV（sendBeacon → enqueue → flush → createMany），但那是"基础版"——只写 SQLite、聚合回填主库 views。如果想做实时 PV 计数、Redis 缓存、Webhook 通知等，需要插件扩展。路径级 PV 明细已由系统统计页直接聚合 analytics 库提供，下面示例保留作为 `onPageView` 扩展点的参考实现。
 
 **插件做什么**：
 ```
@@ -5602,10 +5605,131 @@ Tailwind 类名覆盖方案更复杂（要在运行时注入新的 Tailwind clas
 }
 ```
 
+## 十五、实现状态对齐（2026-11-20）
+
+本节记录代码实际落地口径，替代前文中与之冲突的描述（尤其是 `vendor/` 路径与扩展点数量）。
+
+### 15.1 运行时目录（重要修正）
+
+| 内容 | 实际路径 | 说明 |
+|------|----------|------|
+| 插件安装态 | `scripts/plugins/<slug>/plugin.json` + `index.js` | 由 `lib/ext-installer.ts` 写入；启动/构建前由 `scripts/ensure-extensions.js` 补齐内置项 |
+| 主题安装态 | `scripts/themes/<slug>/` | 含 `theme.json`、`theme.css`、可选 `templates/` |
+| 主题模板覆盖 | `scripts/themes/<active>/templates/<name>.tsx` | `lib/theme/templates.ts` 运行时编译，失败回退内置模板 |
+| 主题覆盖插件模板 | `scripts/themes/<active>/templates/plugins/<pluginSlug>/<name>.tsx` | `lib/plugin/theme-integration.ts` |
+| 文档旧写法 | `vendor/plugins`、`vendor/themes` | 仅作源码/设计约定，**不是**运行时扫描目录；`build-vendor` 预编译方案未采用 |
+
+### 15.2 数据模型变更
+
+迁移文件：`prisma/migrations/20261120120000_complete_features/migration.sql`（已通过 `prisma migrate deploy` 应用）。
+
+- 新增 `VerificationCode`（邮箱验证码 / 找回密码，带过期与已用标记）
+- 新增 `Attachment`（附件库：url、大小、mime、上传者、存储驱动）
+- `Comment`：新增 `ip`、`userAgent`、`extra`（插件 `injectCommentField` 的结构化数据）
+- `Page`：新增 `showSidebar`、`sidebarContent`
+- `User`：新增 `attachments` 关联
+- `SiteSetting` 新增：`enableSectionize`、`codeTabGroup`、`enableFigure`、`enableMermaid`、`enablePlantuml`、`autoBackupCron`、`autoBackupKeep`、`allowThemeGitInstall`、`oauthGithubId/Secret`、`oauthGoogleId/Secret`、`oauthWechatId/Secret`、`enableLdap`、`ldapUrl`、`ldapBindDn`、`ldapBindPassword`、`ldapBaseDn`、`ldapUserFilter`
+
+`lib/site.ts` 的 `DEFAULT_SITE_SETTING` 已同步全部字段。
+
+### 15.3 插件 SPI 实际实现
+
+类型来源：`@rainynest/plugin-types@0.3.1`（已发布到 npm，源码在 `RainyNest_Dev/packages/types`）。`lib/plugin/types.ts` 仅做统一 re-export，宿主不再维护本地类型副本；扩展点变更时发布新版本类型包并升级依赖即可。
+
+新增/已实现扩展点：
+
+- 请求与存储：`apiMiddleware`、`attachmentStorage`、`notifier`、`searchProvider`
+- 页面注入：`injectHeaderAction`、`injectSinglePageContent`、`injectCommentField`、`injectFooter`、`providesTemplates`
+- 后台列表/操作：`pageListItemOperation`、`commentListItemOperation`、`replyListItemOperation`、`pluginListItemOperation`、`themeListItemOperation`、`attachmentListItemOperation`、`backupListItemOperation`
+- 列表字段：`postListItemField`、`pageListItemField`、`pluginListItemField`
+- Tab：`pluginDetailTab`、`themeListTab`、`attachmentSelectorTab`、`pluginInstallTab`、`backupTab`、`userDetailTab`
+- 编辑器/评论：`editorCreate`、`commentEditorReplace`、`commentListItemContentReplace`、`commentSubjectRef`
+- 仪表盘：`dashboardWidget`、`dashboardQuickAction`
+- 生命周期：`onInstall`/`onUninstall`/`onEnable`/`onDisable`/`onRenderMarkdown`/`onGenerateMetadata` 等（沿用基础包）
+
+执行引擎：
+
+| 文件 | 职责 |
+|------|------|
+| `lib/plugin/engine.ts` | 扫描加载、`fireExtensionPoint`、`firstWins`、`getApiMiddlewares/runApiMiddlewares`、`getAttachmentStorageProvider`、`getPluginNotifier`、`getProvidedTemplates`、`collectPluginDefinitions` |
+| `lib/plugin/ui.ts` | 列表操作/字段、Header 按钮、单页内容、评论字段、编辑器动作、快捷操作、Tab、评论编辑器/内容替换、`commentSubjectRef` |
+| `lib/plugin/api-gate.ts` | `pluginApiGate(req)`：把 API 请求交给 `apiMiddleware` 链，异常放行 |
+| `lib/mailer.ts` | `sendMail` 优先走插件 `notifier`，无 provider 或失败回退 SMTP，支持 `scene` |
+| `lib/plugin-db.ts` | 每个插件独立 `.db` 与 JSON 配置（`lib/plugin/json-store.ts`） |
+
+### 15.4 已接入的宿主位置
+
+**用户体系**
+
+- 注册/邮箱验证码/找回密码：`app/api/auth/register`、`email-code`、`forgot-password`、`reset-password`
+- 登录页：`app/signin/page.tsx`；会话与权限沿用 NextAuth + `lib/api-auth.ts`
+- OAuth2（GitHub/Google/微信）与 LDAP：配置存 `SiteSetting`，认证提供者在 NextAuth 配置中按开关装配
+- 后台角色管理：`app/console/system/roles/page.tsx`、`app/api/console/roles`
+
+**主题**
+
+- Git 安装：`app/api/console/themes/git-install`（受 `allowThemeGitInstall` 控制）
+- 在线预览：`app/(site)/preview/page.tsx?theme=<slug>`，复用首页组件、注入主题 CSS 变量，**不改用 cookie 动态化全站**，保留 ISR
+- 主题设置页：`app/console/system/themes`（含 `themeListTab` 与行操作）
+
+**运维**
+
+- 备份/恢复：`app/api/console/backup`、`backup/restore`；定时策略读 `autoBackupCron/autoBackupKeep`
+- 缓存工具（重置浏览量 / 重建 FTS5 / 刷新 ISR）：`app/api/console/cache` + `app/console/tools/cache/page.tsx`
+- 实时在线人数 SSE：`app/api/analytics/online`（5 秒推送、30 分钟重连，需登录）
+- GeoIP：`lib/analytics/geo.ts`（优先 CDN 请求头，可选动态加载 `geoip-lite`，内网跳过）
+- 定时发布/聚合：`app/api/cron/publish`、`app/api/cron/analytics`
+
+**Markdown 管线**（`lib/markdown/`）
+
+- `processor.ts`：`enableCallouts`、`enableWikiLink`、`enableEmailProtection`、`enableSectionize`、`codeTabGroup`、`enableFigure`、`enableMermaid`、`enablePlantuml` 组合缓存
+- 支持 `:::note/tip/warning/danger/info/important/caution`、`:::code-group`、相邻代码块自动分组、独占段落图片转 `figure/figcaption`、Mermaid 客户端 CDN 渲染、PlantUML 公共 SVG 服务
+- `reading-time.ts`（阅读时间）、`comment.ts`（评论 Markdown + 严格白名单清洗）
+- 样式：`app/globals.css` 已补 `.admonition`、`.code-group`、`.markdown-figure`、`pre.mermaid`、`img.plantuml`
+
+**后台 UI 接入**
+
+`posts`（插件字段列）、`pages`（字段/操作）、`system/plugins`（字段/行操作/详情 Tab/安装 Tab）、`system/themes`（Tab/行操作/预览）、`tools/backup`（Tab/操作）、`attachments`（Tab/操作）、`comments`（操作/来源 `_subject`）、`system/users`（详情 Tab/登录设备）、`console` 首页（`dashboardQuickAction`）、`ConsoleShell` 导航（附件/角色）、`MilkdownEditor`（`editorCreate` 按钮）
+
+**前台**
+
+- `app/(site)/layout.tsx`：`injectFooter`、`injectHeaderAction`、`<MermaidRenderer />`
+- 文章详情：`injectSinglePageContent`（`collectPostContentHtml`）、第三方评论组件替换（`getCommentWidgetHtml`）、`injectCommentField`（`CommentForm` 动态字段）
+- `components/markdown/MermaidRenderer.tsx`：按需加载 Mermaid ESM
+
+### 15.5 内置插件（8 个）
+
+`announcement-bar`（新增，演示 `injectHeaderAction`/`dashboardQuickAction`/`injectFooter`/`apiMiddleware`/`notifier`）、`code-highlight`、`comment-filter`、`default-seo`、`reading-time`、`related-posts`、`rss-feed`、`sitemap-enhance`。
+
+### 15.6 部署文件
+
+- `Dockerfile` + `.dockerignore`：多阶段构建，持久化 `db/`、`public/uploads/`、`scripts/plugins/`、`scripts/themes/`
+- `vercel.json`：crons → `/api/cron/publish`（每分钟）、`/api/cron/analytics`（每天 03:00）
+- `ecosystem.config.js`：PM2 fork 单实例（SQLite 写锁 + 插件 `.db`）
+- `deploy/nginx.conf`：反代、静态资源缓存、SSE 关闭缓冲（`proxy_buffering off`）与超时
+
+### 15.7 RainyNest_Dev 工作区同步
+
+- `packages/types`：0.3.0，新增全部 SPI 类型（可构建）
+- `packages/plugins/announcement-bar`：第 8 个示例插件（已复制到主项目 `scripts/plugins/announcement-bar`）
+- `tools/ext-cli`：`validate.js` 支持 `specVersion 0.3.0`；CLI 模板补充新 SPI 注释
+- `PLUGIN_THEME_PLAN.md`：新增第 9 章，说明扩展点与开发流程
+
+### 15.8 已知边界（明确未做/降级）
+
+| 项 | 现状 |
+|----|------|
+| `commentEditorReplace` / `commentListItemContentReplace` | 已实现收集器（`getCommentEditorHtml` / `getCommentContentRendererHtml`），但前台评论表单与列表仍使用内置 UI；这两个扩展点需要插件组件的 props 契约，未做逐条评论注入 |
+| `apiMiddleware` | 已覆盖 8 个公开接口：`posts`、`pages`、`comments`、`categories`、`tags`、`links`、`gallery`、`moments`；后台与其余路由未接入 |
+| `CodeBlock` 组件 | 未使用；代码高亮统一走 Expressive Code（rehype 插件） |
+| PlantUML | 使用公共 `plantuml.com` SVG 服务，非本地渲染 |
+| 主题 `vendor` 预编译 | 未采用 `build-vendor`；运行时直接编译 `scripts/themes` 模板 |
+| npm 类型包 | `@rainynest/plugin-types` 已发布 0.3.1，主项目从 npm 安装并直接 re-export；类型包由同一维护者发布，不再使用本地补丁 |
+
 ***
 
-> **文档版本**: v2.1
-> **更新日期**: 2026-11-13
+> **文档版本**: v2.2
+> **更新日期**: 2026-11-20
 > **适用**: Next.js 15 + React 19 + Prisma 5 + SQLite
 > **参考**: NovaCMS 插件/主题架构 + Halo 主题切换思路 + Firefly Markdown 架构
 
@@ -5613,6 +5737,7 @@ Tailwind 类名覆盖方案更复杂（要在运行时注入新的 Tailwind clas
 
 | 版本 | 日期 | 改动 |
 |------|------|------|
+| **v2.2** | 2026-11-20 | **功能补齐与文档对齐**：新增第十五节，记录运行时目录（`scripts/plugins`、`scripts/themes`）、数据模型迁移、实际 SPI 扩展点与宿主接入、8 个内置插件、部署文件（Dockerfile/vercel/PM2/Nginx）、Markdown 新管线与已知边界；修正前文 `vendor/` 路径描述 |
 | **v2.1** | 2026-11-13 | **架构审计修复**：3 个 P0 严重缺陷（动态 import vendor 目录→esbuild 预编译；Prisma 双 Client output/import 不一致；环境变量 3 vs 4 矛盾）、6 个 P1 中等缺陷（middleware.ts 缺失 + Next.js 15 Edge Runtime 约束；NextAuth 5 API；权限 session 缓存；定时聚合任务自托管 vs serverless 双方案 + 分布式锁；lib/mailer.ts 邮件通知模块；SQLite FTS5 默认搜索）、6 个 P2 小缺陷 + **访问统计不阻塞写入**（客户端 sendBeacon + `/api/analytics/pv` 立即响应 + 进程内队列 100ms flush + 批量 createMany + SQLite WAL 模式优化 + SIGTERM 安全退出 flush） |
 | **v2.0** | 2026-11-13 | Halo 风格完整设计：双库架构、RBAC 用户系统、Halo 扩展点插件系统、动态配置主题系统、Firefly Markdown 完整移植 |
 | **v1.0** | 2026-11-13 | 初始版本：基础架构、技术栈、目录结构 |

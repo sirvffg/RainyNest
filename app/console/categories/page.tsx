@@ -113,11 +113,6 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-5">
-      <div className="anim-fade-in-up">
-        <h1 className="text-2xl font-bold">分类管理</h1>
-        <p className="mt-1 text-sm text-fg-muted">组织文章内容结构</p>
-      </div>
-
       <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
         {/* 表单 */}
         <form

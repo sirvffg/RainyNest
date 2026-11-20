@@ -1,11 +1,36 @@
 // app/api/console/themes/route.ts — 主题列表（磁盘 theme.json + 数据库记录合并）
 import { NextResponse } from 'next/server';
+import fs from 'node:fs';
+import path from 'node:path';
 import { requireSession } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
 import { scanInstalledThemes } from '@/lib/theme';
 import type { ThemeMeta } from '@/lib/theme';
 
 export const runtime = 'nodejs';
+
+const THEMES_DIR = path.join(process.cwd(), 'scripts', 'themes');
+
+/** 扫描主题 templates/plugins 下可覆盖的插件模板（格式：plugin/name） */
+function scanThemeTemplates(slug: string): string[] {
+  const pluginsDir = path.join(THEMES_DIR, slug, 'templates', 'plugins');
+  if (!fs.existsSync(pluginsDir)) return [];
+
+  const templates: string[] = [];
+  try {
+    for (const plugin of fs.readdirSync(pluginsDir)) {
+      const pluginDir = path.join(pluginsDir, plugin);
+      if (!fs.statSync(pluginDir).isDirectory()) continue;
+      for (const file of fs.readdirSync(pluginDir)) {
+        if (!file.endsWith('.tsx')) continue;
+        templates.push(`${plugin}/${file.slice(0, -4)}`);
+      }
+    }
+  } catch {
+    return templates;
+  }
+  return templates.sort();
+}
 
 export async function GET() {
   const session = await requireSession();
@@ -31,6 +56,8 @@ export async function GET() {
       source: dbEntry?.source ?? 'builtin',
       installedAt: dbEntry?.installedAt ?? null,
       updatedAt: dbEntry?.updatedAt ?? null,
+      templates: scanThemeTemplates(meta.slug),
+      settingsHref: `/console/system/themes/${encodeURIComponent(meta.slug)}/settings`,
     };
   });
 
@@ -52,10 +79,23 @@ export async function GET() {
       installedAt: t.installedAt,
       updatedAt: t.updatedAt,
       missing: true,
+      templates: [],
+      settingsHref: null,
     });
   }
 
-  return NextResponse.json({ list });
+  // 插件扩展点：themeListTab / themeListItemOperation
+  let tabs: unknown[] = [];
+  let operations: unknown[] = [];
+  try {
+    const { collectTabs, collectListOperations } = await import('@/lib/plugin/ui');
+    [tabs, operations] = await Promise.all([
+      collectTabs('themeListTab'),
+      collectListOperations('themeListItemOperation'),
+    ]);
+  } catch { /* 插件系统未就绪 */ }
+
+  return NextResponse.json({ list, tabs, operations });
 }
 
 function safeParse(json: string): unknown {

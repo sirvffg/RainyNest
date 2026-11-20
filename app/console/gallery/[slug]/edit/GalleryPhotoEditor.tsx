@@ -153,10 +153,6 @@ function Editor({ slug }: { slug: string }) {
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <div>
-            <h1 className="text-2xl font-bold">{gallery.title}</h1>
-            <p className="mt-0.5 text-sm text-fg-muted">编辑相册照片 共 {photos.length} 张</p>
-          </div>
         </div>
         <button
           type="button"

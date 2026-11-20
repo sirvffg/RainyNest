@@ -2,7 +2,7 @@
 // 粘贴纯 Markdown 自动解析为结构节点，避免 ProseMirror 全量转义
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Editor, rootCtx, defaultValueCtx } from '@milkdown/kit/core';
 import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
@@ -22,6 +22,15 @@ export default function MilkdownEditor({
   const rootRef = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const [actions, setActions] = useState<EditorAction[]>([]);
+
+  // 插件 editorCreate 扩展点：加载自定义工具按钮
+  useEffect(() => {
+    fetch('/api/plugin/editor-actions')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setActions(Array.isArray(d?.list) ? d.list : []))
+      .catch(() => { /* 忽略 */ });
+  }, []);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -94,7 +103,43 @@ export default function MilkdownEditor({
       className="milkdown-editor-wrapper rounded border border-line bg-bg transition-all duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-blue-500/20"
       style={{ minHeight }}
     >
+      {actions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 border-b border-line px-2 py-1.5">
+          {actions.map((a) => (
+            <button
+              key={`${a.pluginSlug}:${a.key}`}
+              type="button"
+              title={a.shortcut ? `${a.label}（${a.shortcut}）` : a.label}
+              onClick={() => runEditorAction(a)}
+              className="rounded px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-bg-secondary hover:text-primary"
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div ref={rootRef} />
     </div>
   );
+}
+
+type EditorAction = {
+  pluginSlug: string;
+  key: string;
+  label: string;
+  insert?: string;
+  wrap?: [string, string];
+  shortcut?: string;
+};
+
+// 基于 execCommand 的轻量插入；插件按钮本质是 Markdown 片段注入
+function runEditorAction(action: EditorAction) {
+  const selection = window.getSelection()?.toString() ?? '';
+  let text = action.insert ? action.insert.replace('{selection}', selection) : selection;
+  if (action.wrap) text = `${action.wrap[0]}${selection}${action.wrap[1]}`;
+  if (!text) return;
+  const active = document.activeElement as HTMLElement | null;
+  if (active?.isContentEditable) {
+    document.execCommand('insertText', false, text);
+  }
 }

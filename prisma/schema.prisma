@@ -42,6 +42,7 @@ model User {
   roles          UserRole[]
   identities     Identity[]
   sessions       Session[]
+  attachments    Attachment[]
 
   @@index([username])
   @@index([email])
@@ -154,6 +155,21 @@ model Session {
   @@index([token])
 }
 
+// 邮箱/手机验证码（登录、注册、重置密码共用）
+model VerificationCode {
+  id        String    @id @default(cuid())
+  target    String // 邮箱或手机号
+  channel   String    @default("EMAIL") // EMAIL | PHONE
+  purpose   String    @default("LOGIN") // LOGIN | REGISTER | RESET
+  code      String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([target, purpose])
+  @@index([expiresAt])
+}
+
 // ═══════════════════════════════════════════════════════════
 // 内容：文章 / 分类 / 标签 / 评论 / 页面 / 说说 / 相册 / 友链 / 菜单
 // ═══════════════════════════════════════════════════════════
@@ -222,6 +238,9 @@ model Comment {
   parentId  String?
   content   String
   status    String        @default("PENDING") // PENDING | APPROVED | REJECTED
+  ip        String?
+  userAgent String?
+  extra     String? // 插件注入的表单字段（JSON）
   createdAt DateTime      @default(now())
 
   post      Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -231,15 +250,33 @@ model Comment {
 }
 
 model Page {
-  id        String     @id @default(cuid())
-  title     String
-  slug      String     @unique
-  content   String
-  summary   String?
-  status    String     @default("PUBLISHED")
-  order     Int        @default(0)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id             String     @id @default(cuid())
+  title          String
+  slug           String     @unique
+  content        String
+  summary        String?
+  status         String     @default("PUBLISHED")
+  order          Int        @default(0)
+  // 独立页面侧边栏控制
+  showSidebar    Boolean    @default(true)
+  sidebarContent String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+// 附件库（上传记录 + 插件存储提供者返回的元信息）
+model Attachment {
+  id         String   @id @default(cuid())
+  name       String
+  url        String
+  mimeType   String?
+  size       Int      @default(0)
+  storage    String   @default("local") // local | 插件提供者名称
+  uploaderId String?
+  uploader   User?    @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 model Moment {
@@ -373,6 +410,11 @@ model SiteSetting {
   enableWikiLink         Boolean @default(false)
   enableReadingTime      Boolean @default(true)
   enableEmailProtection  Boolean @default(true)
+  enableSectionize       Boolean @default(false)
+  codeTabGroup           Boolean @default(true)
+  enableFigure           Boolean @default(true)
+  enableMermaid          Boolean @default(false)
+  enablePlantuml         Boolean @default(false)
 
   // SMTP
   smtpHost    String?
@@ -380,6 +422,27 @@ model SiteSetting {
   smtpUser    String?
   smtpPass    String?
   smtpFrom    String?
+
+  // 运维：定时备份
+  autoBackupCron  String?  // 标准 5 段 cron；为空则关闭
+  autoBackupKeep  Int      @default(7)
+
+  // 主题 Git 安装开关
+  allowThemeGitInstall Boolean @default(true)
+
+  // OAuth2 / LDAP（留空即关闭对应登录方式）
+  oauthGithubId      String?
+  oauthGithubSecret  String?
+  oauthGoogleId      String?
+  oauthGoogleSecret  String?
+  oauthWechatId      String?
+  oauthWechatSecret  String?
+  enableLdap         Boolean @default(false)
+  ldapUrl            String?
+  ldapBindDn         String?
+  ldapBindPassword   String?
+  ldapBaseDn         String?
+  ldapUserFilter     String?
 
   primaryColor String? @default("#3b82f6")
 

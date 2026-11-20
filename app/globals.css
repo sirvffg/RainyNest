@@ -193,6 +193,122 @@ body {
   color: var(--color-primary);
   border-bottom: 1px dashed color-mix(in srgb, var(--color-primary) 50%, transparent);
 }
+/* ::: 指令容器（remark-directive → div.admonition.admonition-<type>） */
+.markdown-body .admonition {
+  margin: 1.25em 0;
+  padding: 0.85em 1em;
+  border-radius: 0.6rem;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-bg-secondary);
+  font-size: 0.925em;
+}
+.markdown-body .admonition-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  margin: 0 0 0.4em;
+  font-weight: 600;
+}
+.markdown-body .admonition > :first-child.admonition-title { margin-top: 0; }
+.markdown-body .admonition > :last-child { margin-bottom: 0; }
+.markdown-body .admonition-note,
+.markdown-body .admonition-info { border-left-color: #3b82f6; }
+.markdown-body .admonition-note .admonition-title,
+.markdown-body .admonition-info .admonition-title { color: #3b82f6; }
+.markdown-body .admonition-tip { border-left-color: #10b981; }
+.markdown-body .admonition-tip .admonition-title { color: #10b981; }
+.markdown-body .admonition-important { border-left-color: #8b5cf6; }
+.markdown-body .admonition-important .admonition-title { color: #8b5cf6; }
+.markdown-body .admonition-warning,
+.markdown-body .admonition-caution { border-left-color: #f59e0b; }
+.markdown-body .admonition-warning .admonition-title,
+.markdown-body .admonition-caution .admonition-title { color: #f59e0b; }
+.markdown-body .admonition-danger { border-left-color: #ef4444; }
+.markdown-body .admonition-danger .admonition-title { color: #ef4444; }
+/* 代码分组（:::code-group 或相邻代码块自动合并 → details.code-group-item） */
+.markdown-body .code-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+  margin: 1.25em 0;
+}
+.markdown-body .code-group > .code-group-item {
+  border: 1px solid var(--color-border);
+  border-radius: 0.6rem;
+  overflow: hidden;
+}
+.markdown-body .code-group > .code-group-item[open] { border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border)); }
+.markdown-body .code-group-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.5em 0.85em;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--color-fg-muted);
+  background: var(--color-bg-secondary);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.markdown-body .code-group-tab::-webkit-details-marker { display: none; }
+.markdown-body .code-group-tab::before {
+  content: '';
+  width: 0.4em;
+  height: 0.4em;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.2s ease;
+}
+.markdown-body .code-group-item[open] > .code-group-tab { color: var(--color-primary); }
+.markdown-body .code-group-item[open] > .code-group-tab::before { transform: rotate(45deg); }
+.markdown-body .code-group > .code-group-item > .expressive-code { margin: 0; }
+.markdown-body .code-group > .code-group-item > .expressive-code .frame { border-radius: 0; }
+/* 图片 figure（独占段落的图片自动包裹并生成图注） */
+.markdown-body .markdown-figure {
+  margin: 1.5em 0;
+  text-align: center;
+}
+.markdown-body .markdown-figure img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.6rem;
+}
+.markdown-body .markdown-figure figcaption {
+  margin-top: 0.6em;
+  font-size: 0.85em;
+  color: var(--color-fg-muted);
+}
+/* Mermaid 图表（客户端按需从 CDN 渲染） */
+.markdown-body pre.mermaid {
+  margin: 1.5em 0;
+  padding: 1em;
+  overflow-x: auto;
+  text-align: center;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  color: var(--color-fg-muted);
+}
+.markdown-body pre.mermaid[data-processed] {
+  background: transparent;
+  border-color: transparent;
+  padding: 0;
+  color: inherit;
+  font-family: inherit;
+}
+.markdown-body pre.mermaid svg { max-width: 100%; height: auto; }
+/* PlantUML 图片 */
+.markdown-body img.plantuml {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5em auto;
+}
 /* Milkdown 可视化编辑器排版 */
 .milkdown-editor-wrapper .milkdown {
   padding: 1rem;

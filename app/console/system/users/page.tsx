@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Lock, Pencil, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
+import { Info, Loader2, Lock, Pencil, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
 import ToastProvider, { useToast } from '@/components/admin/Toast';
 import Modal, { ConfirmDialog } from '@/components/admin/Modal';
 import Toggle from '@/components/admin/Toggle';
@@ -57,6 +57,11 @@ function UsersContent() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<UserItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [detailUser, setDetailUser] = useState<UserItem | null>(null);
+  const [detailTabs, setDetailTabs] = useState<{ pluginSlug: string; key: string; label: string; html: string }[]>([]);
+  const [detailTab, setDetailTab] = useState('');
+  const [sessions, setSessions] = useState<{ id: string; device?: string | null; ip?: string | null; lastActiveAt: string }[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
   const [form, setForm] = useState({
     username: '',
     displayName: '',
@@ -74,6 +79,7 @@ function UsersContent() {
       setList(data.list ?? []);
       // 全部角色（含尚未分配给任何用户的内置角色）
       if (Array.isArray(data.roles)) setAllRoles(data.roles);
+      setDetailTabs(Array.isArray(data.tabs) ? data.tabs : []);
     } catch {
       toast('加载用户列表失败', 'error');
     }
@@ -186,11 +192,7 @@ function UsersContent() {
   return (
     <div className="space-y-6">
       {/* 页头 */}
-      <div className="flex flex-wrap items-center justify-between gap-3 anim-fade-in-up">
-        <div>
-          <h1 className="text-2xl font-bold">用户管理</h1>
-          <p className="mt-1 text-sm text-fg-muted">账号 角色与状态一览</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3 anim-fade-in-up">
         <button
           type="button"
           onClick={openCreate}
@@ -252,6 +254,26 @@ function UsersContent() {
                   <div className="flex shrink-0 items-center gap-0.5">
                     <button
                       type="button"
+                      title="详情"
+                      onClick={async () => {
+                        setDetailUser(user);
+                        setDetailTab(detailTabs[0]?.key ?? '');
+                        setLoadingSessions(true);
+                        try {
+                          const res = await fetch(`/api/console/users/${user.id}/sessions`);
+                          const d = await res.json();
+                          setSessions(Array.isArray(d?.list) ? d.list : []);
+                        } catch {
+                          setSessions([]);
+                        }
+                        setLoadingSessions(false);
+                      }}
+                      className="rounded p-2 text-fg-muted transition-all duration-200 hover:bg-bg-secondary hover:text-primary active:scale-90"
+                    >
+                      <Info className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
                       title="编辑"
                       onClick={() => openEdit(user)}
                       className="rounded p-2 text-fg-muted transition-all duration-200 hover:bg-bg-secondary hover:text-primary active:scale-90"
@@ -273,6 +295,68 @@ function UsersContent() {
           </div>
         )}
       </div>
+
+      {/* 用户详情：插件 userDetailTab + 登录设备 */}
+      <Modal
+        open={!!detailUser}
+        onClose={() => setDetailUser(null)}
+        title={`用户详情 · ${detailUser?.displayName || detailUser?.username || ''}`}
+        maxWidth="max-w-2xl"
+      >
+        {detailUser && (
+          <div className="space-y-4">
+            <div className="grid gap-2 text-sm sm:grid-cols-2">
+              <p><span className="text-fg-muted">用户名：</span>{detailUser.username}</p>
+              <p><span className="text-fg-muted">邮箱：</span>{detailUser.email || '-'}</p>
+              <p><span className="text-fg-muted">状态：</span>{statusBadge(detailUser.status).text}</p>
+              <p><span className="text-fg-muted">最后登录：</span>{fmtDateTime(detailUser.lastLoginAt)}</p>
+            </div>
+
+            {detailTabs.length > 0 && (
+              <div>
+                <div className="mb-2 flex flex-wrap gap-1 border-b border-line pb-2">
+                  {detailTabs.map((t) => (
+                    <button
+                      key={`${t.pluginSlug}:${t.key}`}
+                      type="button"
+                      onClick={() => setDetailTab(t.key)}
+                      className={`rounded px-3 py-1.5 text-sm transition-colors ${
+                        (detailTab || detailTabs[0]?.key) === t.key ? 'bg-primary/10 text-primary' : 'text-fg-muted hover:bg-bg-secondary'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <div
+                  className="text-sm"
+                  dangerouslySetInnerHTML={{
+                    __html: (detailTabs.find((t) => t.key === detailTab) ?? detailTabs[0])?.html ?? '',
+                  }}
+                />
+              </div>
+            )}
+
+            <div>
+              <p className="mb-2 text-sm font-medium">登录设备</p>
+              {loadingSessions ? (
+                <p className="text-xs text-fg-muted"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />加载中…</p>
+              ) : sessions.length === 0 ? (
+                <p className="text-xs text-fg-muted">暂无活跃会话</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {sessions.map((s) => (
+                    <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-line px-3 py-2 text-xs">
+                      <span>{s.device || '未知设备'} · {s.ip || '-'}</span>
+                      <span className="text-fg-muted">{fmtDateTime(s.lastActiveAt)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* 新建/编辑模态 */}
       <Modal

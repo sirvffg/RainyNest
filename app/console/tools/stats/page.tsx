@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Eye, FileText, TrendingUp } from 'lucide-react';
+import { BarChart3, Eye, FileText, Route, TrendingUp } from 'lucide-react';
 import ToastProvider, { useToast } from '@/components/admin/Toast';
 
 interface TrendPoint {
@@ -21,10 +21,18 @@ interface SourceItem {
   count: number;
 }
 
+interface TopPathItem {
+  path: string;
+  count: number;
+  lastViewedAt: string | null;
+}
+
 interface DetailedStats {
   pvTrend: TrendPoint[];
   topPosts: TopPost[];
   sources: SourceItem[];
+  topPaths: TopPathItem[];
+  totalPvAllTime: number;
 }
 
 export default function StatsPage() {
@@ -74,18 +82,14 @@ function StatsContent() {
 
   return (
     <div className="space-y-6">
-      {/* 页头 */}
-      <div className="anim-fade-in-up">
-        <h1 className="text-2xl font-bold">访问统计</h1>
-        <p className="mt-1 text-sm text-fg-muted">近 30 天流量趋势与热门内容</p>
-      </div>
-
       <TrendChartSection data={stats?.pvTrend ?? []} totalPv={totalPv} totalUv={totalUv} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <TopPostsSection posts={stats?.topPosts ?? []} />
         <SourcesSection sources={stats?.sources ?? []} />
       </div>
+
+      <PathsSection paths={stats?.topPaths ?? []} totalPv={stats?.totalPvAllTime ?? 0} />
     </div>
   );
 }
@@ -329,6 +333,65 @@ function SourcesSection({ sources }: { sources: SourceItem[] }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════ 路径浏览排行（原 page-views 插件能力） ═══════════ */
+
+function PathsSection({ paths, totalPv }: { paths: TopPathItem[]; totalPv: number }) {
+  const maxCount = Math.max(1, ...paths.map((p) => p.count || 0));
+  return (
+    <div className="rounded-lg border border-line bg-bg p-4 sm:p-5 anim-fade-in-up" style={{ animationDelay: '0.2s' }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <Route className="h-4 w-4 text-primary" />
+          路径浏览排行 Top 20
+        </h2>
+        {totalPv > 0 && (
+          <span className="rounded bg-bg-secondary px-2 py-1 text-xs text-fg-muted">
+            全站累计 PV <span className="font-semibold tabular-nums text-fg">{totalPv.toLocaleString('zh-CN')}</span>
+          </span>
+        )}
+      </div>
+      {paths.length === 0 ? (
+        <p className="mt-6 rounded border border-dashed border-line px-4 py-8 text-center text-sm text-fg-muted">暂无路径浏览数据</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-fg-muted">
+              <tr className="border-b border-line">
+                <th className="px-2 py-2 font-medium">路径</th>
+                <th className="px-2 py-2 font-medium">浏览次数</th>
+                <th className="hidden px-2 py-2 font-medium sm:table-cell">最近浏览</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paths.map((p) => (
+                <tr key={p.path || 'root'} className="border-b border-line/60 transition-colors last:border-0 hover:bg-bg-secondary/50">
+                  <td className="max-w-[18rem] truncate px-2 py-2 font-mono text-xs" title={p.path}>
+                    {p.path || '/'}
+                  </td>
+                  <td className="px-2 py-2 tabular-nums">
+                    <div className="flex items-center gap-2">
+                      <span className="w-12 text-right font-medium">{Number(p.count || 0).toLocaleString('zh-CN')}</span>
+                      <span className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-bg-secondary md:block">
+                        <span
+                          className="block h-full rounded-full bg-primary/70"
+                          style={{ width: `${Math.max(3, ((p.count || 0) / maxCount) * 100)}%` }}
+                        />
+                      </span>
+                    </div>
+                  </td>
+                  <td className="hidden px-2 py-2 text-xs text-fg-muted sm:table-cell">
+                    {p.lastViewedAt ? new Date(p.lastViewedAt).toLocaleString('zh-CN') : '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

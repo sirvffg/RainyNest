@@ -1,5 +1,6 @@
 // app/api/analytics/pv/route.ts — PV 上报入口（立即响应，不碰 SQLite）
 import { enqueuePageView } from '@/lib/analytics/queue';
+import { resolveCountry } from '@/lib/analytics/geo';
 import { fireExtensionPoint } from '@/lib/plugin/engine';
 import { getSiteSetting } from '@/lib/site';
 
@@ -49,12 +50,19 @@ export async function POST(req: Request) {
     const path = data.path as string;
     const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
 
+    // 国家/地区：请求头优先，其次可选的 geoip-lite；失败时静默降级为 null
+    let country: string | null = null;
+    try {
+      country = await resolveCountry(ip, req.headers);
+    } catch { /* 解析失败不影响上报 */ }
+
     // 入队 → 立即返回（不 await 任何 DB 操作，响应 < 5ms）
     enqueuePageView({
       path,
       postSlug: typeof data.postSlug === 'string' ? data.postSlug : null,
       sessionId,
       ip,
+      country,
       userAgent: req.headers.get('user-agent') || data.ua || '',
       referer: typeof data.referer === 'string' ? data.referer : '',
       createdAt: new Date(),

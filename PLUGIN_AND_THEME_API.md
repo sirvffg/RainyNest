@@ -295,7 +295,7 @@ scripts/themes/<slug>/
 ├── theme.json                    # 元数据 + 配置 schema（必填）
 ├── theme.js                      # 配置 → CSS 变量映射（可选）
 ├── templates/                    # 主题覆盖的前台页面模板（可选）
-│   ├── post-detail.tsx
+│   ├── post-detail.tsx           # 覆盖系统文章详情页（见 §5）
 │   ├── sidebar.tsx
 │   └── plugins/<pluginSlug>/     # 覆盖插件模板（Halo 风格"主题优先"）
 │       └── my-widget.tsx
@@ -398,7 +398,48 @@ interface ActiveTheme extends ThemeMeta {
 }
 ```
 
-### 5. 主题覆盖插件模板（theme-integration.ts）
+### 5. 主题覆盖系统页面模板（lib/theme/templates.ts）
+
+主题可在 `scripts/themes/<slug>/templates/post-detail.tsx` 放置文章详情页模板，存在即覆盖系统内置渲染（esbuild 运行时编译，mtime 变化自动重编译；编译失败自动回退内置模板）。
+
+**规则（重要）**：模板是纯服务端 JSX——
+- 可 import：`lucide-react` 等 node_modules 内 CJS 包（`react/jsx-runtime` 自动注入）
+- 不可 import：`@/...` 别名路径、`'use client'` 组件
+- 评论表单 / TOC / 第三方评论等交互区块由宿主预渲染为 ReactNode 插槽传入
+
+```tsx
+// scripts/themes/<slug>/templates/post-detail.tsx
+export default function PostDetail({ post, html, commentsCount, slots }) {
+  return (
+    <div>
+      <h1>{post.title}</h1>
+      <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+      {slots.contentBlocks}   {/* 插件文末追加块 */}
+      {slots.comments}        {/* 完整评论区 */}
+      {/* slots.tocMobile / slots.tocDesktop 可选摆放 */}
+    </div>
+  );
+}
+```
+
+**PostDetailTemplateProps 契约**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `post.title / author / views / allowComment` | 基础字段 | 文章信息 |
+| `post.date` | `Date` | 发布时间（无则创建时间） |
+| `post.category` | `{name, slug} \| null` | 分类 |
+| `post.tags` | `{name, slug}[]` | 标签 |
+| `post.coverImage` | `string \| null` | 封面 |
+| `html` | `string` | Markdown 渲染后 HTML（含插件管线） |
+| `commentsCount` | `number` | 已通过评论数 |
+| `slots.tocMobile / tocDesktop` | `ReactNode` | 移动/桌面端目录 |
+| `slots.comments` | `ReactNode` | 评论区（已处理关闭评论与插件替换） |
+| `slots.contentBlocks` | `ReactNode \| null` | 插件文末追加块 |
+
+主题模板中的 Tailwind class 由 `tailwind.config.ts` 的 `./scripts/themes/**/templates/**` 扫描生成，自定义新 class 后需重启 dev/build 一次。
+
+### 6. 主题覆盖插件模板（theme-integration.ts）
 
 Halo 风格「主题优先」设计：主题可以选择性覆盖任何插件的默认 UI 模板。
 
@@ -413,13 +454,13 @@ scripts/plugins/<pluginSlug>/templates/<name>.tsx
 
 ```ts
 import { resolvePluginTemplate } from '@/lib/plugin/theme-integration';
-const mod = await resolvePluginTemplate('page-views', 'stats-card');
+const mod = await resolvePluginTemplate('related-posts', 'stats-card');
 // 主题覆盖存在 → 返回主题的 tsx 模块
 // 否则 → 返回插件自带的 tsx 模块
 // 都没有 → 返回 null
 ```
 
-### 6. 主题与插件协作示意
+### 7. 主题与插件协作示意
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -427,7 +468,7 @@ const mod = await resolvePluginTemplate('page-views', 'stats-card');
 │                                                       │
 │  getActiveTheme() → cssVars → 注入 <html style>       │
 │  collectInjectFooter() → 插件结果 → 注入页面底部       │
-│  resolvePluginTemplate('page-views', 'card')          │
+│  resolvePluginTemplate('related-posts', 'card')       │
 │    → 主题覆盖存在? ── YES ── import 主题模板          │
 │    →                 NO  ── import 插件自带模板        │
 └─────────────────────────────────────────────────────┘

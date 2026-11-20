@@ -3,6 +3,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { requireSession, requirePermission } from '@/lib/api-auth';
+import { pluginApiGate } from '@/lib/plugin/api-gate';
 import { db } from '@/lib/prisma';
 
 // 列表（未登录只看已发布）
@@ -26,6 +27,8 @@ const createSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const blocked = await pluginApiGate(req);
+  if (blocked) return blocked;
   const check = await requirePermission('link:create');
   if (check) return check;
 

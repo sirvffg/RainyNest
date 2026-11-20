@@ -7,6 +7,7 @@ import { analytics } from '../analytics';
 import { getSiteSetting } from '../site';
 import { getPluginDb } from '../plugin-db';
 import { ensurePluginConfigFile, getPluginConfigStore, getPluginJsonStore } from './json-store';
+import { importRoleTemplates } from './role-templates';
 import type {
   ExtensionHandlers,
   LoadedPlugin,
@@ -127,6 +128,13 @@ export async function bootPlugins(): Promise<void> {
     }
 
     g.__rnPlugins = plugins;
+
+    // 导入插件声明的角色模板（失败只记日志，不影响插件加载）
+    try {
+      await importRoleTemplates(plugins);
+    } catch (err) {
+      console.error('[Plugin] roleTemplates 导入失败:', err);
+    }
 
     // 执行 onMount
     for (const p of plugins) {
@@ -257,4 +265,113 @@ export async function getPluginFrontendRoutes(): Promise<
 // 获取已加载插件列表（只读）
 export function getLoadedPlugins(): LoadedPlugin[] {
   return g.__rnPlugins || [];
+}
+
+// ═══════════════ 新增 SPI 收集器 ═══════════════
+
+export type ResolvedApiMiddleware = import('./types').ApiMiddlewareDef & {
+  pluginSlug: string;
+};
+
+// 收集所有插件的 API 过滤器
+export async function getApiMiddlewares(): Promise<ResolvedApiMiddleware[]> {
+  if (!g.__rnPlugins) await bootPlugins();
+  const list: ResolvedApiMiddleware[] = [];
+  for (const plugin of g.__rnPlugins || []) {
+    for (const def of plugin.handlers.apiMiddleware ?? []) {
+      list.push({ ...def, pluginSlug: plugin.slug });
+    }
+  }
+  return list;
+}
+
+// 执行 API 过滤器链；返回 Response 表示拦截，返回 null 表示放行
+export async function runApiMiddlewares(req: Request): Promise<Response | null> {
+  let middlewares: ResolvedApiMiddleware[] = [];
+  try {
+    middlewares = await getApiMiddlewares();
+  } catch {
+    return null;
+  }
+  if (middlewares.length === 0) return null;
+
+  const url = new URL(req.url);
+  const matched = middlewares.filter((m) => {
+    if (m.path && !url.pathname.startsWith(m.path)) return false;
+    if (m.methods?.length && !m.methods.includes(req.method as never)) return false;
+    return true;
+  });
+  if (matched.length === 0) return null;
+
+  let index = 0;
+  const next = async (): Promise<Response> => {
+    if (index >= matched.length) return new Response(null, { status: 204 });
+    const mw = matched[index++];
+    const out = await mw.handler(req, next);
+    return out instanceof Response ? out : next();
+  };
+  const result = await next();
+  // 204 是链尾占位，视为放行
+  return result.status === 204 ? null : result;
+}
+
+// 附件存储提供者（第一个提供的插件生效）
+export async function getAttachmentStorageProvider(): Promise<
+  (import('./types').AttachmentStorageProvider & { pluginSlug: string }) | null
+> {
+  if (!g.__rnPlugins) await bootPlugins();
+  for (const plugin of g.__rnPlugins || []) {
+    if (plugin.handlers.attachmentStorage) {
+      return { ...plugin.handlers.attachmentStorage, pluginSlug: plugin.slug };
+    }
+  }
+  return null;
+}
+
+// 通知器提供者（第一个提供的插件生效；未提供则回退内置 SMTP）
+export async function getPluginNotifier(): Promise<
+  (import('./types').PluginNotifier & { pluginSlug: string }) | null
+> {
+  if (!g.__rnPlugins) await bootPlugins();
+  for (const plugin of g.__rnPlugins || []) {
+    if (plugin.handlers.notifier) {
+      return { ...plugin.handlers.notifier, pluginSlug: plugin.slug };
+    }
+  }
+  return null;
+}
+
+// 插件声明的可覆盖模板清单
+export async function getProvidedTemplates(): Promise<
+  { pluginSlug: string; name: string }[]
+> {
+  if (!g.__rnPlugins) await bootPlugins();
+  const list: { pluginSlug: string; name: string }[] = [];
+  for (const plugin of g.__rnPlugins || []) {
+    for (const name of plugin.handlers.providesTemplates ?? []) {
+      list.push({ pluginSlug: plugin.slug, name });
+    }
+  }
+  return list;
+}
+
+// 通用数组型扩展点收集（带插件 slug）
+export interface ResolvedDefinition {
+  pluginSlug: string;
+  pluginName: string;
+  // 扩展点元素类型各不相同，调用方按具体扩展点断言
+  def: any;
+}
+
+export async function collectPluginDefinitions(point: keyof ExtensionHandlers): Promise<ResolvedDefinition[]> {
+  if (!g.__rnPlugins) await bootPlugins();
+  const out: ResolvedDefinition[] = [];
+  for (const plugin of g.__rnPlugins || []) {
+    const value = (plugin.handlers as Record<string, unknown>)[point as string];
+    if (!Array.isArray(value)) continue;
+    for (const def of value) {
+      out.push({ pluginSlug: plugin.slug, pluginName: plugin.meta.name, def });
+    }
+  }
+  return out;
 }

@@ -1,10 +1,11 @@
 // app/(site)/layout.tsx — 前台布局：Header + Main + Sidebar + Footer（含插件 injectFooter 注入）
 import Header from '@/components/layout/Header';
+import MermaidRenderer from '@/components/markdown/MermaidRenderer';
 import Footer from '@/components/layout/Footer';
 import Sidebar from '@/components/layout/Sidebar';
 import { db } from '@/lib/prisma';
 import { getSiteSetting } from '@/lib/site';
-import { collectInjectFooter } from '@/lib/plugin/ui';
+import { collectInjectFooter, collectHeaderActions } from '@/lib/plugin/ui';
 import type { NavItem } from '@/components/layout/Header';
 
 export const revalidate = 3600;
@@ -31,9 +32,15 @@ export default async function WebLayout({ children }: { children: React.ReactNod
     footerNodes = await collectInjectFooter();
   } catch { /* 插件系统未就绪 */ }
 
+  // 插件扩展点：injectHeaderAction（顶栏按钮）
+  let headerActions: Awaited<ReturnType<typeof collectHeaderActions>> = [];
+  try {
+    headerActions = await collectHeaderActions();
+  } catch { /* 插件系统未就绪 */ }
+
   return (
     <div className="flex flex-col min-h-screen">
-      <Header siteTitle={site.title} menus={menus} />
+      <Header siteTitle={site.title} menus={menus} headerActions={headerActions} />
       <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
         <div className="flex gap-10">
           <main className="min-w-0 flex-1">{children}</main>
@@ -48,6 +55,7 @@ export default async function WebLayout({ children }: { children: React.ReactNod
           <div key={i}>{node}</div>
         ),
       )}
+      <MermaidRenderer />
     </div>
   );
 }

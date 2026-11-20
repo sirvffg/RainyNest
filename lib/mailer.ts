@@ -28,8 +28,18 @@ async function getTransporter() {
 
 export async function sendMail(
   to: string | string[],
-  opts: { subject: string; html?: string; text?: string; replyTo?: string }
+  opts: { subject: string; html?: string; text?: string; replyTo?: string; scene?: string }
 ) {
+  // 插件 notifier 扩展点优先（邮件/Webhook/短信等自定义通道）
+  try {
+    const { getPluginNotifier } = await import('./plugin/engine');
+    const notifier = await getPluginNotifier();
+    if (notifier) {
+      const r = await notifier.send({ to, ...opts });
+      if (r.ok) return { ok: true, messageId: r.messageId };
+    }
+  } catch { /* 插件系统未就绪 → 回退 SMTP */ }
+
   try {
     const t = await getTransporter();
     const site = await getSiteSetting();

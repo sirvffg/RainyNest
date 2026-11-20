@@ -17,7 +17,14 @@ export async function GET() {
     }),
     db.role.findMany({ select: { id: true, name: true, displayName: true }, orderBy: { createdAt: 'asc' } }),
   ]);
-  return NextResponse.json({ list, roles: allRoles });
+  // 插件扩展点：userDetailTab
+  let tabs: unknown[] = [];
+  try {
+    const { collectTabs } = await import('@/lib/plugin/ui');
+    tabs = await collectTabs('userDetailTab');
+  } catch { /* 插件系统未就绪 */ }
+
+  return NextResponse.json({ list, roles: allRoles, tabs });
 }
 
 // 创建用户（密码 bcrypt 哈希，可关联角色）

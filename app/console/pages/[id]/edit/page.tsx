@@ -30,6 +30,8 @@ export default async function EditCustomPage({ params }: { params: Promise<{ id:
         content: data?.content ?? '',
         status: data?.status ?? 'PUBLISHED',
         order: typeof data?.order === 'number' ? data.order : 0,
+        showSidebar: typeof data?.showSidebar === 'boolean' ? data.showSidebar : true,
+        sidebarContent: data?.sidebarContent ?? '',
       };
     }
   } catch {

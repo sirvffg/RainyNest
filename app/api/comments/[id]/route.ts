@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { hasPermission, requirePermission } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
+import { mailScenes } from '@/lib/mailer';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -39,6 +40,25 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 
   const comment = await db.comment.update({ where: { id }, data: { status: parsed.data.status } });
   revalidatePath('/', 'layout');
+
+  // 首次审核通过时通知评论作者（fire-and-forget，SMTP 未配置时内部静默跳过）
+  if (parsed.data.status === 'APPROVED' && existing.status !== 'APPROVED') {
+    void (async () => {
+      try {
+        const detail = await db.comment.findUnique({
+          where: { id },
+          include: {
+            user: { select: { email: true } },
+            post: { select: { title: true } },
+          },
+        });
+        if (detail?.user.email) {
+          await mailScenes.commentApproved(detail.user.email, detail.post.title, detail.content);
+        }
+      } catch { /* 邮件失败不影响审核结果 */ }
+    })();
+  }
+
   return NextResponse.json(comment);
 }
 

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Archive } from 'lucide-react';
 import { db } from '@/lib/prisma';
 
-export const revalidate = 3600;
+export const revalidate = 300;
 
 interface ArchivePost {
   id: string;

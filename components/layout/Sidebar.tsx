@@ -78,7 +78,7 @@ export default async function Sidebar() {
   } catch { /* 插件系统未就绪 */ }
 
   return (
-    <aside className="sticky top-20 hidden w-60 shrink-0 flex-col gap-6 self-start xl:flex">
+    <aside data-site-sidebar className="sticky top-20 hidden w-60 shrink-0 flex-col gap-6 self-start xl:flex">
       {/* 最新文章 */}
       {posts.length > 0 && (
         <section className="anim-fade-in-up rounded-xl border border-line bg-bg p-4">

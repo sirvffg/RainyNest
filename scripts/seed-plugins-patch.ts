@@ -10,7 +10,6 @@ const PLUGINS = [
   { slug: 'default-seo', name: 'SEO 助手', version: '1.0.0', description: '自动生成摘要 + OpenGraph/Twitter 元数据增强 + 站点验证标签', isActive: true },
   { slug: 'code-highlight', name: '代码高亮增强', version: '1.0.0', description: '高亮行区间语法转换 + Expressive Code 主题微调', isActive: true },
   { slug: 'rss-feed', name: 'RSS 订阅', version: '1.0.0', description: 'RSS/Atom 双格式输出', isActive: true },
-  { slug: 'page-views', name: '页面浏览量', version: '1.0.0', description: '按路径统计 PV，独立 SQLite 存储', isActive: true },
   { slug: 'reading-time', name: '阅读时间', version: '1.0.0', description: '文章阅读时间显示', isActive: true },
   { slug: 'sitemap-enhance', name: 'Sitemap 增强', version: '1.0.0', description: '完整 sitemap.xml（文章/分类/标签/相册）', isActive: false },
   { slug: 'comment-filter', name: '评论过滤', version: '1.0.0', description: '垃圾评论自动审核（关键词/IP 黑名单）', isActive: false },

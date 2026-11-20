@@ -10,6 +10,8 @@ import {
   Palette,
   Save,
   Search,
+  ShieldCheck,
+  Send,
 } from 'lucide-react';
 import ToastProvider, { useToast } from '@/components/admin/Toast';
 import Toggle from '@/components/admin/Toggle';
@@ -23,6 +25,7 @@ const TABS = [
   { key: 'interact', label: '互动', icon: MessageSquare },
   { key: 'markdown', label: 'Markdown', icon: FileCode2 },
   { key: 'smtp', label: 'SMTP', icon: Mail },
+  { key: 'security', label: '登录/运维', icon: ShieldCheck },
   { key: 'appearance', label: '外观', icon: Palette },
 ] as const;
 
@@ -47,6 +50,7 @@ function SettingsContent() {
   const [settings, setSettings] = useState<SettingsMap>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false);
   // 液态玻璃 Tab 栏：滑块位置 / 首次渲染不带动画 / 鼠标反光
   const tabsNavRef = useRef<HTMLDivElement>(null);
   const tabsAnimatedRef = useRef(false);
@@ -155,6 +159,21 @@ function SettingsContent() {
     setSaving(false);
   }
 
+  // SMTP 连接测试：先保存当前表单再验证，避免测到旧配置
+  async function handleTestSmtp() {
+    if (testingSmtp) return;
+    setTestingSmtp(true);
+    try {
+      await handleSave();
+      const res = await fetch('/api/console/settings/test-smtp', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      toast(data?.message || (data?.ok ? 'SMTP 连接成功' : 'SMTP 连接失败'), data?.ok ? 'success' : 'error');
+    } catch {
+      toast('SMTP 连接测试失败', 'error');
+    }
+    setTestingSmtp(false);
+  }
+
   function text(key: string, label: string, placeholder?: string) {
     return (
       <div key={key} className="space-y-1.5">
@@ -246,12 +265,6 @@ function SettingsContent() {
 
   return (
     <div className="space-y-6">
-      {/* 页头 */}
-      <div className="anim-fade-in-up">
-        <h1 className="text-2xl font-bold">系统设置</h1>
-        <p className="mt-1 text-sm text-fg-muted">站点信息 互动与渲染行为皆在此调整</p>
-      </div>
-
       {/* Tab 栏：液态玻璃导航（滑块跟随 + 鼠标反光） */}
       <div
         ref={tabsNavRef}
@@ -349,6 +362,11 @@ function SettingsContent() {
               {toggleRow('enableWikiLink', '启用 WikiLink 语法', '支持 [[页面名]] 双链')}
               {toggleRow('enableReadingTime', '显示阅读时长')}
               {toggleRow('enableEmailProtection', '邮箱地址防爬保护')}
+              {toggleRow('enableSectionize', '按标题分节', '为渲染后的章节添加分节容器')}
+              {toggleRow('codeTabGroup', '代码块分组', '把相邻代码块渲染为可切换 Tab')}
+              {toggleRow('enableFigure', '图片自动图注', '图片渲染为 figure + alt 图注')}
+              {toggleRow('enableMermaid', '启用 Mermaid 图表', '```mermaid 代码块渲染为流程图')}
+              {toggleRow('enablePlantuml', '启用 PlantUML 图表', '```plantuml 代码块渲染为时序图/类图')}
             </>
           )}
 
@@ -375,6 +393,53 @@ function SettingsContent() {
               <p className="rounded bg-bg-secondary px-3.5 py-2.5 text-xs leading-relaxed text-fg-muted">
                 配置 SMTP 后 评论通知等邮件才能正常发送 密码建议使用邮箱服务商提供的授权码
               </p>
+              <button
+                type="button"
+                onClick={handleTestSmtp}
+                disabled={testingSmtp}
+                className="inline-flex items-center gap-2 rounded border border-line bg-bg px-4 py-2 text-sm transition-all duration-200 hover:border-primary/50 hover:text-primary active:scale-95 disabled:opacity-60"
+              >
+                {testingSmtp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {testingSmtp ? '测试中…' : '保存并测试连接'}
+              </button>
+            </>
+          )}
+
+          {activeTab === 'security' && (
+            <>
+              <p className="text-sm font-medium">第三方登录</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {text('oauthGithubId', 'GitHub Client ID')}
+                {text('oauthGithubSecret', 'GitHub Client Secret')}
+                {text('oauthGoogleId', 'Google Client ID')}
+                {text('oauthGoogleSecret', 'Google Client Secret')}
+                {text('oauthWechatId', '微信 AppID')}
+                {text('oauthWechatSecret', '微信 AppSecret')}
+              </div>
+              <p className="text-xs text-fg-muted">
+                回调地址：站点的 /api/auth/callback/github、/api/auth/callback/google、/api/auth/callback/wechat；留空即关闭对应登录方式。
+              </p>
+
+              <p className="pt-2 text-sm font-medium">LDAP</p>
+              {toggleRow('enableLdap', '启用 LDAP 登录', '需服务器安装 ldapjs 依赖')}
+              {settings.enableLdap && (
+                <>
+                  {text('ldapUrl', 'LDAP 地址', 'ldap://127.0.0.1:389')}
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {text('ldapBindDn', 'Bind DN', 'cn=admin,dc=example,dc=com')}
+                    {text('ldapBindPassword', 'Bind 密码')}
+                  </div>
+                  {text('ldapBaseDn', 'Base DN', 'ou=users,dc=example,dc=com')}
+                  {text('ldapUserFilter', '用户过滤器', '(uid={username})')}
+                </>
+              )}
+
+              <p className="pt-2 text-sm font-medium">运维</p>
+              {toggleRow('allowThemeGitInstall', '允许从 Git 安装主题', '仅支持 http(s) 仓库地址')}
+              <div className="grid gap-4 sm:grid-cols-2">
+                {text('autoBackupCron', '自动备份 Cron', '如 0 3 * * *（留空关闭）')}
+                {number('autoBackupKeep', '备份保留份数')}
+              </div>
             </>
           )}
 

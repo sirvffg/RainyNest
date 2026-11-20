@@ -16,6 +16,8 @@ export interface PageEditorInitial {
   content: string;
   status: string;
   order: number;
+  showSidebar?: boolean;
+  sidebarContent?: string | null;
 }
 
 const INPUT_CLS =
@@ -39,6 +41,8 @@ export default function PageEditor({
   const [content, setContent] = useState(initial?.content ?? '');
   const [status, setStatus] = useState(initial?.status ?? 'PUBLISHED');
   const [order, setOrder] = useState(initial?.order ?? 0);
+  const [showSidebar, setShowSidebar] = useState(initial?.showSidebar ?? true);
+  const [sidebarContent, setSidebarContent] = useState(initial?.sidebarContent ?? '');
   const [slugTouched, setSlugTouched] = useState(mode === 'edit');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -64,6 +68,8 @@ export default function PageEditor({
       content,
       status,
       order,
+      showSidebar,
+      sidebarContent: sidebarContent.trim() || null,
     };
     try {
       if (mode === 'create') {
@@ -191,6 +197,42 @@ export default function PageEditor({
                 className="w-20 rounded border border-line bg-bg px-2 py-1.5 text-sm outline-none transition-all duration-200 focus:border-primary"
               />
             </div>
+          </section>
+
+          {/* 独立页面侧边栏控制 */}
+          <section className="space-y-3 rounded-lg border border-line bg-bg p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-fg-muted">显示侧边栏</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showSidebar}
+                onClick={() => setShowSidebar((v) => !v)}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 active:scale-95 ${
+                  showSidebar ? 'bg-primary' : 'bg-bg-secondary border border-line'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-200 ${
+                    showSidebar ? 'left-[22px]' : 'left-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+            {showSidebar && (
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-fg-muted">
+                  自定义侧边栏内容（Markdown，留空使用默认侧栏）
+                </label>
+                <textarea
+                  value={sidebarContent}
+                  onChange={(e) => setSidebarContent(e.target.value)}
+                  rows={5}
+                  placeholder="例如：关于本站、联系方式等"
+                  className={`${INPUT_CLS} resize-y font-mono text-xs`}
+                />
+              </div>
+            )}
           </section>
         </aside>
       </div>

@@ -71,5 +71,27 @@ export async function GET() {
     sources = [];
   }
 
-  return NextResponse.json({ pvTrend, topPosts, sources });
+  // 路径浏览排行（全时段 top20，原 page-views 插件能力合并于此）
+  let topPaths: { path: string; count: number; lastViewedAt: string | null }[] = [];
+  let totalPvAllTime = 0;
+  try {
+    totalPvAllTime = await analytics.pageView.count();
+    const grouped = await analytics.pageView.groupBy({
+      by: ['path'],
+      _count: { _all: true },
+      _max: { createdAt: true },
+      orderBy: { _count: { path: 'desc' } },
+      take: 20,
+    });
+    topPaths = grouped.map((g) => ({
+      path: g.path,
+      count: g._count._all,
+      lastViewedAt: g._max.createdAt ? g._max.createdAt.toISOString() : null,
+    }));
+  } catch (err) {
+    console.error('[api/console/stats/detailed] topPaths failed:', err);
+    topPaths = [];
+  }
+
+  return NextResponse.json({ pvTrend, topPosts, sources, topPaths, totalPvAllTime });
 }

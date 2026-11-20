@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Loader2, Palette, Settings2, Trash2, Upload, Users } from 'lucide-react';
+import Link from 'next/link';
+import { Check, Eye, GitBranch, Loader2, LogOut, Palette, Settings2, Trash2, Upload, Users } from 'lucide-react';
 import ToastProvider, { useToast } from '@/components/admin/Toast';
 import Modal from '@/components/admin/Modal';
-import ConfigForm, { buildDefaultConfig, type ConfigSchema } from '@/components/admin/ConfigForm';
 
 interface ThemeItem {
   id: string;
@@ -16,7 +16,10 @@ interface ThemeItem {
   preview?: string | null;
   isActive: boolean;
   source?: 'builtin' | 'uploaded' | string;
-  configSchema?: ConfigSchema | null;
+  missing?: boolean;
+  templates?: string[];
+  settingsHref?: string | null;
+  configSchema?: Record<string, { label?: string; fields?: Record<string, unknown> }> | null;
   config?: Record<string, unknown> | null;
 }
 
@@ -33,12 +36,18 @@ function ThemesContent() {
   const [list, setList] = useState<ThemeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activating, setActivating] = useState<string | null>(null);
-  const [configTarget, setConfigTarget] = useState<ThemeItem | null>(null);
-  const [config, setConfig] = useState<Record<string, unknown>>({});
-  const [savingConfig, setSavingConfig] = useState(false);
+  const [previewing, setPreviewing] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uninstallTarget, setUninstallTarget] = useState<ThemeItem | null>(null);
   const [uninstalling, setUninstalling] = useState(false);
+  // Git 安装
+  const [gitOpen, setGitOpen] = useState(false);
+  const [gitRepoUrl, setGitRepoUrl] = useState('');
+  const [gitRef, setGitRef] = useState('');
+  const [gitInstalling, setGitInstalling] = useState(false);
+  const [themeTabs, setThemeTabs] = useState<{ pluginSlug: string; key: string; label: string; html: string }[]>([]);
+  const [themeTab, setThemeTab] = useState('');
+  const [themeOps, setThemeOps] = useState<{ label: string; hrefTemplate: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -47,6 +56,8 @@ function ThemesContent() {
       const res = await fetch('/api/console/themes');
       const data = await res.json();
       setList(data.list ?? []);
+      setThemeTabs(Array.isArray(data.tabs) ? data.tabs : []);
+      setThemeOps(Array.isArray(data.operations) ? data.operations : []);
     } catch {
       toast('加载主题列表失败', 'error');
     }
@@ -108,39 +119,80 @@ function ThemesContent() {
     setUninstalling(false);
   }
 
-  function openConfig(theme: ThemeItem) {
-    setConfigTarget(theme);
-    setConfig(buildDefaultConfig(theme.configSchema ?? {}, theme.config));
+  // 预览主题：写入 httpOnly cookie 后新窗口打开首页
+  async function previewTheme(theme: ThemeItem) {
+    if (previewing) return;
+    setPreviewing(theme.slug);
+    try {
+      const res = await fetch(`/api/console/themes/preview?slug=${encodeURIComponent(theme.slug)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '预览失败');
+      toast(`正在预览「${theme.name}」`);
+      window.open(`/preview?theme=${encodeURIComponent(theme.slug)}`, '_blank');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '预览失败 请稍后重试', 'error');
+    }
+    setPreviewing(null);
   }
 
-  async function saveConfig() {
-    if (savingConfig || !configTarget) return;
-    setSavingConfig(true);
+  async function exitPreview() {
     try {
-      const res = await fetch(`/api/console/themes/${encodeURIComponent(configTarget.slug)}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      toast('主题配置已保存');
-      setConfigTarget(null);
-      load();
+      await fetch('/api/console/themes/preview', { method: 'DELETE' });
+      toast('已退出主题预览');
     } catch {
-      toast('保存失败 请稍后重试', 'error');
+      toast('退出预览失败 请稍后重试', 'error');
     }
-    setSavingConfig(false);
+  }
+
+  // Git 仓库安装主题
+  async function installFromGit() {
+    if (gitInstalling) return;
+    const repoUrl = gitRepoUrl.trim();
+    if (!repoUrl) {
+      toast('请输入仓库地址', 'error');
+      return;
+    }
+    setGitInstalling(true);
+    try {
+      const res = await fetch('/api/console/themes/git-install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl, ref: gitRef.trim() || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '安装失败');
+      toast(`主题「${data.name || data.slug}」${data.upgraded ? '升级' : '安装'}成功`);
+      setGitOpen(false);
+      setGitRepoUrl('');
+      setGitRef('');
+      load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Git 安装失败 请稍后重试', 'error');
+    }
+    setGitInstalling(false);
   }
 
   return (
     <div className="space-y-6">
       {/* 页头 */}
-      <div className="anim-fade-in-up flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">主题管理</h1>
-          <p className="mt-1 text-sm text-fg-muted">切换站点外观 微调主题配置</p>
-        </div>
+      <div className="anim-fade-in-up flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={exitPreview}
+            className="inline-flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
+          >
+            <LogOut className="h-4 w-4" />
+            退出预览
+          </button>
+          <button
+            type="button"
+            onClick={() => setGitOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
+          >
+            <GitBranch className="h-4 w-4" />
+            Git 安装
+          </button>
           <input
             ref={fileInputRef}
             type="file"
@@ -159,6 +211,32 @@ function ThemesContent() {
           </button>
         </div>
       </div>
+
+      {/* 主题扩展面板（themeListTab 注入） */}
+      {themeTabs.length > 0 && (
+        <div className="anim-fade-in rounded-lg border border-line bg-bg p-4">
+          <div className="mb-2 flex flex-wrap gap-1 border-b border-line pb-2">
+            {themeTabs.map((t) => (
+              <button
+                key={`${t.pluginSlug}:${t.key}`}
+                type="button"
+                onClick={() => setThemeTab(t.key)}
+                className={`rounded px-3 py-1.5 text-sm transition-colors ${
+                  (themeTab || themeTabs[0]?.key) === t.key ? 'bg-primary/10 text-primary' : 'text-fg-muted hover:bg-bg-secondary'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div
+            className="text-sm"
+            dangerouslySetInnerHTML={{
+              __html: (themeTabs.find((t) => t.key === themeTab) ?? themeTabs[0])?.html ?? '',
+            }}
+          />
+        </div>
+      )}
 
       {/* 主题网格 */}
       {loading ? (
@@ -180,7 +258,7 @@ function ThemesContent() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 stagger">
           {list.map((theme) => (
             <div
-              key={theme.id}
+              key={theme.slug}
               className={`overflow-hidden rounded-lg border bg-bg transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
                 theme.isActive ? 'border-primary/60 ring-1 ring-primary/20' : 'border-line'
               }`}
@@ -220,8 +298,11 @@ function ThemesContent() {
                   {theme.author || '未知作者'}
                 </p>
                 <p className="mt-1.5 line-clamp-2 min-h-[2.4em] text-xs leading-relaxed text-fg-muted">{theme.description || '暂无描述'}</p>
-                <div className="mt-3 flex items-center gap-2">
-                  {!theme.isActive && (
+                {(theme.templates?.length ?? 0) > 0 && (
+                  <p className="mt-1 text-xs text-primary/80">可覆盖 {theme.templates?.length ?? 0} 个插件模板</p>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {!theme.isActive && !theme.missing && (
                     <button
                       type="button"
                       onClick={() => activate(theme)}
@@ -239,13 +320,23 @@ function ThemesContent() {
                   )}
                   <button
                     type="button"
-                    onClick={() => openConfig(theme)}
-                    className="inline-flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
+                    onClick={() => previewTheme(theme)}
+                    disabled={previewing !== null || !!theme.missing}
+                    className="inline-flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Settings2 className="h-4 w-4" />
-                    配置
+                    {previewing === theme.slug ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    预览
                   </button>
-                  {theme.source !== 'builtin' && (
+                  {theme.settingsHref && !theme.missing && (
+                    <Link
+                      href={theme.settingsHref}
+                      className="inline-flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
+                    >
+                      <Settings2 className="h-4 w-4" />
+                      设置
+                    </Link>
+                  )}
+                  {theme.source !== 'builtin' && !theme.missing && (
                     <button
                       type="button"
                       onClick={() => setUninstallTarget(theme)}
@@ -255,6 +346,15 @@ function ThemesContent() {
                       卸载
                     </button>
                   )}
+                  {themeOps.map((op) => (
+                    <a
+                      key={op.label}
+                      href={op.hrefTemplate.replace('{slug}', theme.slug)}
+                      className="inline-flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
+                    >
+                      {op.label}
+                    </a>
+                  ))}
                 </div>
               </div>
             </div>
@@ -262,40 +362,58 @@ function ThemesContent() {
         </div>
       )}
 
-      {/* 配置模态 */}
+      {/* Git 安装模态 */}
       <Modal
-        open={!!configTarget}
-        onClose={() => setConfigTarget(null)}
-        title={`配置主题 · ${configTarget?.name ?? ''}`}
-        maxWidth="max-w-xl"
+        open={gitOpen}
+        onClose={() => !gitInstalling && setGitOpen(false)}
+        title="从 Git 仓库安装主题"
+        maxWidth="max-w-lg"
         footer={
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setConfigTarget(null)}
-              className="rounded border border-line px-4 py-2 text-sm transition-all duration-200 hover:bg-bg-secondary active:scale-95"
+              onClick={() => setGitOpen(false)}
+              disabled={gitInstalling}
+              className="rounded border border-line px-4 py-2 text-sm transition-all duration-200 hover:bg-bg-secondary active:scale-95 disabled:cursor-not-allowed"
             >
               取消
             </button>
             <button
               type="button"
-              onClick={saveConfig}
-              disabled={savingConfig}
+              onClick={installFromGit}
+              disabled={gitInstalling}
               className="liquid-btn liquid-btn-sm inline-flex items-center gap-1.5 disabled:cursor-not-allowed"
             >
-              {savingConfig && <Loader2 className="h-4 w-4 animate-spin" />}
-              {savingConfig ? '保存中' : '保存配置'}
+              {gitInstalling && <Loader2 className="h-4 w-4 animate-spin" />}
+              {gitInstalling ? '安装中' : '开始安装'}
             </button>
           </div>
         }
       >
-        {configTarget && (
-          <ConfigForm
-            schema={configTarget.configSchema ?? {}}
-            value={config}
-            onChange={(key, v) => setConfig((c) => ({ ...c, [key]: v }))}
-          />
-        )}
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <span className="text-sm text-fg-muted">仓库地址</span>
+            <input
+              type="url"
+              value={gitRepoUrl}
+              onChange={(e) => setGitRepoUrl(e.target.value)}
+              placeholder="https://github.com/user/rainynest-theme"
+              className="w-full rounded border border-line bg-bg px-3 py-2 text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+            <p className="text-xs text-fg-muted">仅支持 http(s) 仓库；GitHub / Gitee 克隆失败时自动改用归档下载</p>
+          </div>
+          <div className="space-y-1.5">
+            <span className="text-sm text-fg-muted">分支 / 标签（可选）</span>
+            <input
+              type="text"
+              value={gitRef}
+              onChange={(e) => setGitRef(e.target.value)}
+              placeholder="main"
+              className="w-full rounded border border-line bg-bg px-3 py-2 text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+            <p className="text-xs text-fg-muted">留空使用仓库默认分支；仓库根目录需包含 theme.json</p>
+          </div>
+        </div>
       </Modal>
 
       {/* 卸载确认模态 */}

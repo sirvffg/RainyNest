@@ -16,6 +16,8 @@ interface PageItem {
   status: string;
   order: number;
   updatedAt?: string;
+  /** 插件 pageListItemField 渲染结果 */
+  _fields?: Record<string, string>;
 }
 
 export default function PagesListPage() {
@@ -24,13 +26,21 @@ export default function PagesListPage() {
   const [confirmTarget, setConfirmTarget] = useState<PageItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const [fields, setFields] = useState<{ key: string; label: string; width?: number }[]>([]);
+  const [operations, setOperations] = useState<{ slug: string; label: string; hrefTemplate: string }[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await api<unknown>('/api/pages');
+      const data = await api<{
+        list?: PageItem[];
+        fields?: { key: string; label: string; width?: number }[];
+        operations?: { slug: string; label: string; hrefTemplate: string }[];
+      }>('/api/pages');
       setList(pickList<PageItem>(data));
+      setFields(Array.isArray(data?.fields) ? data.fields : []);
+      setOperations(Array.isArray(data?.operations) ? data.operations : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败');
       setList([]);
@@ -58,11 +68,7 @@ export default function PagesListPage() {
 
   return (
     <div className="space-y-5">
-      <div className="anim-fade-in-up flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">页面管理</h1>
-          <p className="mt-1 text-sm text-fg-muted">关于页 友情链接等独立页面</p>
-        </div>
+      <div className="anim-fade-in-up flex flex-wrap items-center justify-end gap-3">
         <Link
           href="/console/pages/new"
           className="liquid-btn liquid-btn-sm inline-flex items-center gap-1.5"
@@ -109,6 +115,9 @@ export default function PagesListPage() {
                   <th className="px-4 py-3 font-medium">状态</th>
                   <th className="px-4 py-3 font-medium">排序</th>
                   <th className="px-4 py-3 font-medium">更新时间</th>
+                  {fields.map((f) => (
+                    <th key={f.key} className="px-4 py-3 font-medium" style={f.width ? { width: f.width } : undefined}>{f.label}</th>
+                  ))}
                   <th className="px-4 py-3 text-right font-medium">操作</th>
                 </tr>
               </thead>
@@ -129,6 +138,9 @@ export default function PagesListPage() {
                     </td>
                     <td className="px-4 py-3 text-fg-muted">{p.order}</td>
                     <td className="px-4 py-3 text-xs text-fg-muted">{formatDate(p.updatedAt)}</td>
+                    {fields.map((f) => (
+                      <td key={f.key} className="px-4 py-3 text-xs text-fg-muted">{p._fields?.[f.key] || '-'}</td>
+                    ))}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Link
@@ -145,6 +157,15 @@ export default function PagesListPage() {
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
+                        {operations.map((op) => (
+                          <a
+                            key={op.slug + op.label}
+                            href={op.hrefTemplate.replace('{id}', p.id).replace('{slug}', p.slug)}
+                            className="rounded px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-bg-secondary hover:text-primary"
+                          >
+                            {op.label}
+                          </a>
+                        ))}
                       </div>
                     </td>
                   </tr>
@@ -186,6 +207,15 @@ export default function PagesListPage() {
                     <Trash2 className="h-3.5 w-3.5" />
                     删除
                   </button>
+                  {operations.map((op) => (
+                    <a
+                      key={op.slug + op.label}
+                      href={op.hrefTemplate.replace('{id}', p.id).replace('{slug}', p.slug)}
+                      className="inline-flex items-center gap-1 rounded border border-line px-3 py-1.5 text-xs transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
+                    >
+                      {op.label}
+                    </a>
+                  ))}
                 </div>
               </div>
             ))}

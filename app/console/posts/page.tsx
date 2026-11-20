@@ -31,6 +31,8 @@ interface PostItem {
   publishedAt: string | null;
   category: { name: string; slug: string } | null;
   tags: { name: string }[];
+  /** 插件 postListItemField 渲染结果 */
+  _fields?: Record<string, string>;
 }
 
 // 插件扩展点：postListItemOperation（链接型操作按钮，onClick 字段为 href 模板）
@@ -74,6 +76,7 @@ export default function PostsPage() {
   const [confirmTarget, setConfirmTarget] = useState<PostItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [operations, setOperations] = useState<PluginOperation[]>([]);
+  const [fields, setFields] = useState<{ key: string; label: string; width?: number }[]>([]);
   const [error, setError] = useState('');
 
   // 搜索防抖
@@ -92,10 +95,16 @@ export default function PostsPage() {
       const params = new URLSearchParams({ page: String(page), size: String(PAGE_SIZE) });
       if (keyword) params.set('keyword', keyword);
       if (status) params.set('status', status);
-      const data = await api<{ list?: PostItem[]; total?: number; operations?: PluginOperation[] }>(`/api/posts?${params}`);
+      const data = await api<{
+        list?: PostItem[];
+        total?: number;
+        operations?: PluginOperation[];
+        fields?: { key: string; label: string; width?: number }[];
+      }>(`/api/posts?${params}`);
       setList(Array.isArray(data?.list) ? data.list : []);
       setTotal(typeof data?.total === 'number' ? data.total : 0);
       setOperations(Array.isArray(data?.operations) ? data.operations : []);
+      setFields(Array.isArray(data?.fields) ? data.fields : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败');
       setList([]);
@@ -162,11 +171,7 @@ export default function PostsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="anim-fade-in-up flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">文章管理</h1>
-          <p className="mt-1 text-sm text-fg-muted">共 {total.toLocaleString('zh-CN')} 篇文章</p>
-        </div>
+      <div className="anim-fade-in-up flex flex-wrap items-center justify-end gap-3">
         <Link
           href="/console/posts/new"
           className="liquid-btn liquid-btn-sm inline-flex items-center gap-1.5"
@@ -240,6 +245,11 @@ export default function PostsPage() {
                   <th className="px-4 py-3 font-medium">状态</th>
                   <th className="px-4 py-3 font-medium">浏览</th>
                   <th className="px-4 py-3 font-medium">发布时间</th>
+                  {fields.map((f) => (
+                    <th key={f.key} className="px-4 py-3 font-medium" style={f.width ? { width: f.width } : undefined}>
+                      {f.label}
+                    </th>
+                  ))}
                   <th className="px-4 py-3 text-right font-medium">操作</th>
                 </tr>
               </thead>
@@ -287,6 +297,11 @@ export default function PostsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-fg-muted">{formatDate(post.publishedAt ?? post.createdAt)}</td>
+                    {fields.map((f) => (
+                      <td key={f.key} className="px-4 py-3 text-xs text-fg-muted">
+                        {post._fields?.[f.key] || '-'}
+                      </td>
+                    ))}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Link href={`/console/posts/${post.id}/edit`} title="编辑" className={ICON_BTN_PRIMARY}>
@@ -358,6 +373,15 @@ export default function PostsPage() {
                     {post.tags.map((t, ti) => (
                       <span key={`${typeof t === 'string' ? t : t?.name}-${ti}`} className="rounded border border-line bg-bg-secondary px-1.5 py-0.5 text-[11px]">
                         {typeof t === 'string' ? t : t?.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {fields.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-fg-muted">
+                    {fields.map((f) => (
+                      <span key={f.key}>
+                        {f.label}：{post._fields?.[f.key] || '-'}
                       </span>
                     ))}
                   </div>

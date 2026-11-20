@@ -6,13 +6,16 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Eye,
   FileText,
+  HardDriveDownload,
   Inbox,
+  Loader2,
   MessageSquare,
   RefreshCw,
   TrendingUp,
   Users,
 } from 'lucide-react';
 import StatCard from '@/components/admin/StatCard';
+import OnlineNow from '@/components/admin/OnlineNow';
 import { api, timeAgo } from '@/components/admin/utils';
 
 interface RecentComment {
@@ -52,7 +55,27 @@ interface PluginWidget {
 export default function DashboardPage() {
   const [stats, setStats] = useState<ConsoleStats | null>(null);
   const [widgets, setWidgets] = useState<PluginWidget[]>([]);
+  const [quickActions, setQuickActions] = useState<{ label: string; href: string; icon?: string }[]>([]);
   const [error, setError] = useState('');
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupMsg, setBackupMsg] = useState('');
+
+  // 立即创建一次完整备份
+  const manualBackup = useCallback(async () => {
+    if (backingUp) return;
+    setBackingUp(true);
+    setBackupMsg('');
+    try {
+      const res = await fetch('/api/console/backup', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `备份失败 (${res.status})`);
+      setBackupMsg(`备份完成：${data?.backup?.name ?? ''}`);
+    } catch (e) {
+      setBackupMsg(e instanceof Error ? e.message : '备份失败');
+    }
+    setBackingUp(false);
+    window.setTimeout(() => setBackupMsg(''), 4000);
+  }, [backingUp]);
 
   const load = useCallback(async () => {
     setError('');
@@ -60,8 +83,12 @@ export default function DashboardPage() {
       setStats(await api<ConsoleStats>('/api/console/stats'));
       // 插件小部件失败不影响主统计
       try {
-        const data = await api<{ widgets?: PluginWidget[] }>('/api/console/plugin-widgets');
+        const data = await api<{
+          widgets?: PluginWidget[];
+          quickActions?: { label: string; href: string; icon?: string }[];
+        }>('/api/console/plugin-widgets');
         setWidgets(Array.isArray(data?.widgets) ? data.widgets : []);
+        setQuickActions(Array.isArray(data?.quickActions) ? data.quickActions : []);
       } catch { /* ignore */ }
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败');
@@ -83,11 +110,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="anim-fade-in-up">
-        <h1 className="text-2xl font-bold">仪表盘</h1>
-        <p className="mt-1 text-sm text-fg-muted">欢迎回来 祝创作愉快</p>
-      </div>
-
       {error && (
         <div className="anim-fade-in flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           <span className="flex-1">{error}</span>
@@ -112,6 +134,44 @@ export default function DashboardPage() {
                 <div className="skeleton mt-3 h-3 w-24" />
               </div>
             ))}
+      </div>
+
+      {/* 实时在线 + 运维快捷操作 */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <OnlineNow />
+        </div>
+        <div className="anim-fade-in-up flex flex-col justify-between gap-3 rounded-lg border border-line bg-bg p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+          <div>
+            <h3 className="text-sm font-semibold">运维快捷操作</h3>
+            <p className="mt-1 text-xs leading-relaxed text-fg-muted">
+              手动创建一次站点完整备份（主库 / 统计库 / 插件数据）
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={manualBackup}
+            disabled={backingUp}
+            className="inline-flex items-center justify-center gap-2 rounded border border-line px-4 py-2 text-sm font-medium transition-all duration-200 hover:border-primary hover:text-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {backingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <HardDriveDownload className="h-4 w-4" />}
+            {backingUp ? '备份中' : '立即备份'}
+          </button>
+          {backupMsg && <p className="text-xs text-emerald-600">{backupMsg}</p>}
+          {quickActions.length > 0 && (
+            <div className="flex flex-wrap gap-2 border-t border-line pt-3">
+              {quickActions.map((a) => (
+                <a
+                  key={a.href + a.label}
+                  href={a.href}
+                  className="rounded border border-line px-2.5 py-1 text-xs text-fg-muted transition-all duration-200 hover:border-primary hover:text-primary"
+                >
+                  {a.label}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 插件小部件（dashboardWidget 扩展点，服务端渲染 HTML） */}

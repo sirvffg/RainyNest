@@ -4,9 +4,9 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { ArrowLeft, Image as ImageIcon } from 'lucide-react';
 import { db } from '@/lib/prisma';
-import PhotoLightbox from '@/components/gallery/PhotoLightbox';
+import PhotoGrid from '@/components/gallery/PhotoGrid';
 
-export const revalidate = 3600;
+export const revalidate = 600;
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -72,7 +72,7 @@ export default async function GalleryDetailPage({ params }: Props) {
         </div>
       ) : (
         <div className="mt-8 anim-fade-in">
-          <PhotoLightbox
+          <PhotoGrid
             layout="masonry"
             photos={gallery.photos.map((p) => ({
               url: p.url,

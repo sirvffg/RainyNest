@@ -1,5 +1,6 @@
 # dependencies
 node_modules/
+.trae
 
 # next.js
 .next/
@@ -15,6 +16,7 @@ db/*.db-journal
 db/*.db-wal
 db/*.db-shm
 db/plugins/
+db/backups/
 
 # prisma generated
 generated/

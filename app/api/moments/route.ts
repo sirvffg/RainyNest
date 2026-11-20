@@ -5,9 +5,12 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { requireSession, requirePermission } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
+import { pluginApiGate } from '@/lib/plugin/api-gate';
 
 // 列表（未登录只看已发布；登录可看全部，支持 ?status= 筛选）
 export async function GET(req: NextRequest) {
+  const blocked = await pluginApiGate(req);
+  if (blocked) return blocked;
   const session = await requireSession();
   const sp = req.nextUrl.searchParams;
   const status = sp.get('status') || '';
@@ -36,6 +39,8 @@ const createSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const blocked = await pluginApiGate(req);
+  if (blocked) return blocked;
   const check = await requirePermission('moment:create');
   if (check) return check;
 

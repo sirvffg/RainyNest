@@ -7,10 +7,13 @@ import { requireSession, requirePermission, slugify } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
 import { renderMarkdown } from '@/lib/markdown/processor';
 import { fireExtensionPoint, firstWins } from '@/lib/plugin/engine';
+import { pluginApiGate } from '@/lib/plugin/api-gate';
 import type { Prisma } from '@prisma/client';
 
 // 列表查询
 export async function GET(req: NextRequest) {
+  const blocked = await pluginApiGate(req);
+  if (blocked) return blocked;
   const session = await requireSession();
   const sp = req.nextUrl.searchParams;
   const keyword = sp.get('keyword')?.trim() || '';
@@ -50,12 +53,28 @@ async function listPosts(opts: { keyword: string; status: string; page: number; 
 
   // 插件扩展点：postListItemOperation（行操作按钮，降级为链接型 href 模板）
   let operations: unknown[] = [];
+  let fields: { key: string; label: string; width?: number; sortable?: boolean }[] = [];
+  let rows: unknown[] = list;
   try {
-    const { collectPostOperations } = await import('@/lib/plugin/ui');
+    const { collectPostOperations, collectListFields, renderListFieldValues } = await import('@/lib/plugin/ui');
     operations = await collectPostOperations();
+    const defs = await collectListFields('postListItemField');
+    fields = defs.map(({ key, label, width, sortable }) => ({ key, label, width, sortable }));
+    if (defs.length > 0) {
+      rows = await Promise.all(
+        list.map(async (post) => ({
+          ...post,
+          // 插件列表字段的渲染结果（扁平化标签结构，便于插件读取）
+          _fields: await renderListFieldValues(defs, {
+            ...post,
+            tags: post.tags?.map((t) => t.tag) ?? [],
+          }),
+        }))
+      );
+    }
   } catch { /* 插件系统未就绪 */ }
 
-  return NextResponse.json({ list, total, operations });
+  return NextResponse.json({ list: rows, total, operations, fields });
 }
 
 // 创建文章
@@ -98,6 +117,8 @@ async function upsertTags(names: string[]): Promise<string[]> {
 }
 
 export async function POST(req: NextRequest) {
+  const blocked = await pluginApiGate(req);
+  if (blocked) return blocked;
   const check = await requirePermission('post:create');
   if (check) return check;
 

@@ -28,6 +28,8 @@ interface CommentItem {
   createdAt: string;
   post?: { title?: string; slug?: string };
   user?: { displayName?: string };
+  /** commentSubjectRef 扩展点渲染结果 */
+  _subject?: { key: string; label: string; href: string };
 }
 
 const TABS: { key: CommentStatus; label: string; icon: typeof Clock }[] = [
@@ -48,16 +50,20 @@ export default function CommentsPage() {
   const [confirmTarget, setConfirmTarget] = useState<CommentItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const [operations, setOperations] = useState<{ slug: string; label: string; hrefTemplate: string }[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await api<{ list?: CommentItem[]; total?: number }>(
-        `/api/comments?status=${status}&page=${page}`
-      );
+      const data = await api<{
+        list?: CommentItem[];
+        total?: number;
+        operations?: { slug: string; label: string; hrefTemplate: string }[];
+      }>(`/api/comments?status=${status}&page=${page}`);
       setList(Array.isArray(data?.list) ? data.list : []);
       setTotal(typeof data?.total === 'number' ? data.total : 0);
+      setOperations(Array.isArray(data?.operations) ? data.operations : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败');
       setList([]);
@@ -103,11 +109,6 @@ export default function CommentsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="anim-fade-in-up">
-        <h1 className="text-2xl font-bold">评论管理</h1>
-        <p className="mt-1 text-sm text-fg-muted">审核站点评论互动</p>
-      </div>
-
       {/* Tab 切换 */}
       <div className="anim-fade-in-down flex gap-1 border-b border-line">
         {TABS.map((t) => (
@@ -168,7 +169,13 @@ export default function CommentsPage() {
                     <div className="text-sm font-medium">{c.user?.displayName ?? '匿名用户'}</div>
                     <div className="flex items-center gap-1 text-xs text-fg-muted">
                       <FileText className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{c.post?.title ?? '未知文章'}</span>
+                      {c._subject ? (
+                        <a href={c._subject.href} className="truncate hover:text-primary" title={`${c._subject.label}：${c.post?.title ?? ''}`}>
+                          {c._subject.label} · {c.post?.title ?? '未知来源'}
+                        </a>
+                      ) : (
+                        <span className="truncate">{c.post?.title ?? '未知文章'}</span>
+                      )}
                     </div>
                   </div>
                   <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -207,6 +214,18 @@ export default function CommentsPage() {
                     <Trash2 className="h-3.5 w-3.5" />
                     删除
                   </button>
+                  {operations.map((op) => (
+                    <a
+                      key={op.slug + op.label}
+                      href={op.hrefTemplate
+                        .replace('{id}', c.id)
+                        .replace('{postSlug}', (c as { post?: { slug?: string } }).post?.slug ?? '')
+                        .replace('{userId}', (c as { userId?: string }).userId ?? '')}
+                      className={ACTION_BTN + ' border-line hover:border-primary hover:text-primary'}
+                    >
+                      {op.label}
+                    </a>
+                  ))}
                 </div>
               </div>
             ))}

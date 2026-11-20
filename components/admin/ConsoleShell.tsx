@@ -24,11 +24,13 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  Paperclip,
   Palette,
   Puzzle,
   RefreshCw,
   Search,
   Settings,
+  ShieldCheck,
   Sparkles,
   Tags,
   Users,
@@ -69,6 +71,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: '/console/comments', title: '评论', icon: MessageSquare },
       { href: '/console/pages', title: '页面', icon: FileStack },
       { href: '/console/moments', title: '说说', icon: Sparkles },
+      { href: '/console/attachments', title: '附件', icon: Paperclip },
     ],
   },
   {
@@ -84,6 +87,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: '/console/system/settings', title: '设置', icon: Settings },
       { href: '/console/system/users', title: '用户', icon: Users },
+      { href: '/console/system/roles', title: '角色', icon: ShieldCheck },
       { href: '/console/system/themes', title: '主题', icon: Palette },
       { href: '/console/system/plugins', title: '插件', icon: Puzzle },
     ],
@@ -111,13 +115,15 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function resolveTitle(pathname: string, pluginNav: PluginNavItem[]): string {
+function resolveTitle(pathname: string, pluginNav: PluginNavItem[]): { title: string; icon: LucideIcon } {
   let title = '控制台';
+  let icon: LucideIcon = LayoutDashboard;
   let bestLen = 0;
   for (const group of NAV_GROUPS) {
     for (const item of group.items) {
       if (isActive(pathname, item.href) && item.href.length > bestLen) {
         title = item.title;
+        icon = item.icon;
         bestLen = item.href.length;
       }
     }
@@ -125,10 +131,11 @@ function resolveTitle(pathname: string, pluginNav: PluginNavItem[]): string {
   for (const item of pluginNav) {
     if (isActive(pathname, item.href) && item.href.length > bestLen) {
       title = item.title;
+      icon = Puzzle;
       bestLen = item.href.length;
     }
   }
-  return title;
+  return { title, icon };
 }
 
 export default function ConsoleShell({
@@ -461,8 +468,11 @@ export default function ConsoleShell({
           >
             <Menu className="h-5 w-5" />
           </button>
-          <h1 key={pageTitle} className="anim-fade-in-down text-base font-semibold">
-            {pageTitle}
+          <h1 key={pageTitle.title} className="anim-fade-in-down min-w-0 text-xl font-bold">
+            <span className="flex -translate-y-px items-center gap-2">
+              <pageTitle.icon className="h-5 w-5 shrink-0" />
+              <span className="truncate leading-none">{pageTitle.title}</span>
+            </span>
           </h1>
 
           {/* 访问前台 */}

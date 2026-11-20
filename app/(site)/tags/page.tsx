@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Tag as TagIcon, Tags } from 'lucide-react';
 import { db } from '@/lib/prisma';
 
-export const revalidate = 3600;
+export const revalidate = 300;
 
 // 文章数映射字号：1 篇 0.875rem → 最多 1.75rem
 function fontSize(count: number, max: number): string {

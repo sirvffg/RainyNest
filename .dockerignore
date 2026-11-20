@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+db/*.db
+db/*.db-*
+db/backups
+db/plugins-json/*.json
+public/uploads/*
+.vscode
+.trae
+*.log
+npm-debug.log*
+ARCHITECTURE.md

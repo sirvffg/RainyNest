@@ -3,7 +3,7 @@ import { CloudRain } from 'lucide-react';
 import { db } from '@/lib/prisma';
 import MomentCard, { type MomentCardData } from '@/components/moments/MomentCard';
 
-export const revalidate = 3600;
+export const revalidate = 300;
 
 export default async function MomentsPage() {
   let moments: MomentCardData[] = [];

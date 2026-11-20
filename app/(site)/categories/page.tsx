@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { FolderOpen, Folders } from 'lucide-react';
 import { db } from '@/lib/prisma';
 
-export const revalidate = 3600;
+export const revalidate = 300;
 
 export default async function CategoriesPage() {
   let categories: { id: string; name: string; slug: string; description: string | null; _count: { posts: number } }[] = [];

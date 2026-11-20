@@ -15,6 +15,8 @@ interface PluginItem {
   author?: string | null;
   isActive: boolean;
   source?: 'builtin' | 'uploaded' | string;
+  /** 插件 pluginListItemField 渲染结果 */
+  _fields?: Record<string, string>;
   configSchema?: ConfigSchema | null;
   config?: Record<string, unknown> | null;
 }
@@ -42,6 +44,12 @@ function PluginsContent() {
   const [uploading, setUploading] = useState(false);
   const [uninstallTarget, setUninstallTarget] = useState<PluginItem | null>(null);
   const [uninstalling, setUninstalling] = useState(false);
+  const [fields, setFields] = useState<{ key: string; label: string; width?: number }[]>([]);
+  const [operations, setOperations] = useState<{ slug: string; label: string; hrefTemplate: string }[]>([]);
+  const [detailTabs, setDetailTabs] = useState<{ pluginSlug: string; key: string; label: string; html: string }[]>([]);
+  const [installTabs, setInstallTabs] = useState<{ pluginSlug: string; key: string; label: string; html: string }[]>([]);
+  const [detailTarget, setDetailTarget] = useState<PluginItem | null>(null);
+  const [detailTab, setDetailTab] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -52,6 +60,10 @@ function PluginsContent() {
       const next: PluginItem[] = data.list ?? [];
       cachedList = next;
       setList(next);
+      setFields(Array.isArray(data.fields) ? data.fields : []);
+      setOperations(Array.isArray(data.operations) ? data.operations : []);
+      setDetailTabs(Array.isArray(data.tabs) ? data.tabs : []);
+      setInstallTabs(Array.isArray(data.installTabs) ? data.installTabs : []);
     } catch {
       toast('加载插件列表失败', 'error');
     }
@@ -154,11 +166,7 @@ function PluginsContent() {
   return (
     <div className="space-y-6">
       {/* 页头 */}
-      <div className="anim-fade-in-up flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">插件管理</h1>
-          <p className="mt-1 text-sm text-fg-muted">为站点按需扩展能力</p>
-        </div>
+      <div className="anim-fade-in-up flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-2">
           <input
             ref={fileInputRef}
@@ -178,6 +186,14 @@ function PluginsContent() {
           </button>
         </div>
       </div>
+
+      {/* 插件 market 安装方式（pluginInstallTab 注入） */}
+      {installTabs.length > 0 && (
+        <div className="anim-fade-in rounded-lg border border-line bg-bg p-4">
+          <p className="mb-2 text-sm font-medium">更多安装方式</p>
+          <div className="space-y-2" dangerouslySetInnerHTML={{ __html: installTabs.map((t) => t.html).join('') }} />
+        </div>
+      )}
 
       {/* 插件网格 */}
       {loading ? (
@@ -223,7 +239,16 @@ function PluginsContent() {
                 </div>
               </div>
               <p className="mt-2.5 line-clamp-2 min-h-[2.4em] text-xs leading-relaxed text-fg-muted">{plugin.description || '暂无描述'}</p>
-              <div className="mt-3 flex items-center gap-2">
+              {fields.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-fg-muted">
+                  {fields.map((f) => (
+                    <span key={f.key}>
+                      {f.label}：{plugin._fields?.[f.key] || '-'}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => toggleActive(plugin)}
@@ -256,6 +281,31 @@ function PluginsContent() {
                   </button>
                 )}
               </div>
+              {(detailTabs.some((t) => t.pluginSlug === plugin.slug) || operations.length > 0) && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {detailTabs.some((t) => t.pluginSlug === plugin.slug) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDetailTarget(plugin);
+                        setDetailTab(detailTabs.find((t) => t.pluginSlug === plugin.slug)?.key ?? '');
+                      }}
+                      className="inline-flex items-center gap-1 rounded border border-line px-3 py-1.5 text-xs transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
+                    >
+                      详情
+                    </button>
+                  )}
+                  {operations.map((op) => (
+                    <a
+                      key={op.slug + op.label}
+                      href={op.hrefTemplate.replace('{slug}', plugin.slug).replace('{id}', plugin.id ?? plugin.slug)}
+                      className="inline-flex items-center gap-1 rounded border border-line px-3 py-1.5 text-xs transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
+                    >
+                      {op.label}
+                    </a>
+                  ))}
+                </div>
+              )}
               {plugin.isActive && (
                 <p className="mt-2 inline-flex items-center gap-1 text-xs text-emerald-600 anim-fade-in">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -266,6 +316,40 @@ function PluginsContent() {
           ))}
         </div>
       )}
+
+      {/* 插件详情模态：pluginDetailTab 注入 */}
+      <Modal
+        open={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={`插件详情 · ${detailTarget?.name ?? ''}`}
+        maxWidth="max-w-2xl"
+      >
+        {detailTarget && (() => {
+          const tabs = detailTabs.filter((t) => t.pluginSlug === detailTarget.slug);
+          const active = tabs.find((t) => t.key === detailTab) ?? tabs[0];
+          return (
+            <div>
+              {tabs.length > 1 && (
+                <div className="mb-3 flex flex-wrap gap-1 border-b border-line pb-2">
+                  {tabs.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setDetailTab(t.key)}
+                      className={`rounded px-3 py-1.5 text-sm transition-colors ${
+                        active?.key === t.key ? 'bg-primary/10 text-primary' : 'text-fg-muted hover:bg-bg-secondary'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {active && <div className="text-sm" dangerouslySetInnerHTML={{ __html: active.html }} />}
+            </div>
+          );
+        })()}
+      </Modal>
 
       {/* 配置模态 */}
       <Modal

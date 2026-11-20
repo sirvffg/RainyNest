@@ -72,5 +72,25 @@ export async function GET() {
     });
   }
 
-  return NextResponse.json({ list });
+  // 插件扩展点：列表字段 / 行操作 / 插件详情 Tab
+  let fields: { key: string; label: string; width?: number }[] = [];
+  let operations: unknown[] = [];
+  let tabs: unknown[] = [];
+  let installTabs: unknown[] = [];
+  let rows: unknown[] = list;
+  try {
+    const { collectListFields, renderListFieldValues, collectListOperations, collectTabs } = await import('@/lib/plugin/ui');
+    const defs = await collectListFields('pluginListItemField');
+    fields = defs.map(({ key, label, width }) => ({ key, label, width }));
+    if (defs.length > 0) {
+      rows = await Promise.all(
+        list.map(async (item) => ({ ...item, _fields: await renderListFieldValues(defs, item) }))
+      );
+    }
+    operations = await collectListOperations('pluginListItemOperation');
+    tabs = await collectTabs('pluginDetailTab');
+    installTabs = await collectTabs('pluginInstallTab');
+  } catch { /* 插件系统未就绪 */ }
+
+  return NextResponse.json({ list: rows, fields, operations, tabs, installTabs });
 }

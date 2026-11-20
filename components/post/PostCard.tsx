@@ -1,5 +1,6 @@
+// components/post/PostCard.tsx — 文章卡片（列表复用）
 import Link from 'next/link';
-import { Eye, Clock, FolderOpen } from 'lucide-react';
+import PostMeta from './PostMeta';
 
 export interface PostCardData {
   id: string;
@@ -37,17 +38,7 @@ export default function PostCard({ post, index = 0 }: { post: PostCardData; inde
           </div>
         )}
 
-        <div className="flex items-center gap-3 text-xs text-fg-muted">
-          {post.category && (
-            <span className="inline-flex items-center gap-1 text-primary">
-              <FolderOpen className="w-3.5 h-3.5" />
-              {post.category.name}
-            </span>
-          )}
-          <time dateTime={date.toISOString()}>
-            {date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
-          </time>
-        </div>
+        <PostMeta date={date} category={post.category} />
 
         <h2 className="mt-2.5 text-lg font-semibold group-hover:text-primary transition-colors duration-200">
           {post.title}
@@ -57,12 +48,7 @@ export default function PostCard({ post, index = 0 }: { post: PostCardData; inde
           <p className="mt-2 text-sm text-fg-muted line-clamp-2 leading-relaxed">{post.summary}</p>
         )}
 
-        <div className="mt-4 flex items-center gap-4 text-xs text-fg-muted">
-          <span className="inline-flex items-center gap-1">
-            <Eye className="w-3.5 h-3.5" />
-            {post.views} 次浏览
-          </span>
-        </div>
+        <PostMeta views={post.views} className="mt-4" />
       </Link>
     </article>
   );

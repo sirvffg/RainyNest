@@ -1,5 +1,6 @@
 // components/moments/MomentCard.tsx — 单条说说卡片
-import { User } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight, User } from 'lucide-react';
 import PhotoLightbox from '@/components/gallery/PhotoLightbox';
 
 export interface MomentCardData {
@@ -66,6 +67,17 @@ export default function MomentCard({ moment, index = 0 }: { moment: MomentCardDa
             className="mt-3"
           />
         )}
+
+        {/* 详情入口 */}
+        <div className="mt-3 flex justify-end">
+          <Link
+            href={`/moments/${moment.id}`}
+            className="group inline-flex items-center gap-1 text-xs text-fg-muted transition-colors duration-200 hover:text-primary"
+          >
+            查看详情
+            <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+          </Link>
+        </div>
       </div>
     </article>
   );

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/prisma';
 import { requirePermission } from '@/lib/api-auth';
+import { pluginApiGate } from '@/lib/plugin/api-gate';
 
 export async function GET() {
   const list = await db.tag.findMany({
@@ -19,6 +20,8 @@ const createSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const blocked = await pluginApiGate(req);
+  if (blocked) return blocked;
   const check = await requirePermission('tag:create');
   if (check) return check;
 

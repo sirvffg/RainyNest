@@ -5,15 +5,38 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Search, Menu as MenuIcon, X, CloudRain } from 'lucide-react';
 import UserMenu from './UserMenu';
+import MobileNav from './MobileNav';
 
 export interface NavItem {
   name: string;
   url: string;
 }
 
-export default function Header({ siteTitle, menus, showSearch }: { siteTitle: string; menus: NavItem[]; showSearch?: boolean }) {
+// 插件 injectHeaderAction 注入的顶栏按钮（仅渲染带 href 的项）
+export interface HeaderAction {
+  key: string;
+  label: string;
+  href?: string;
+}
+
+export default function Header({
+  siteTitle,
+  menus,
+  showSearch,
+  headerActions = [],
+}: {
+  siteTitle: string;
+  menus: NavItem[];
+  showSearch?: boolean;
+  headerActions?: HeaderAction[];
+}) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const actions = headerActions.filter((a) => typeof a.href === 'string' && a.href.length > 0) as {
+    key: string;
+    label: string;
+    href: string;
+  }[];
 
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-[color-mix(in_srgb,var(--color-bg)_85%,transparent)] backdrop-blur-md anim-fade-in-down">
@@ -40,6 +63,20 @@ export default function Header({ siteTitle, menus, showSearch }: { siteTitle: st
               </Link>
             );
           })}
+
+          {/* 插件顶栏按钮（桌面端） */}
+          {actions.length > 0 && (
+            <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
+          )}
+          {actions.map((action) => (
+            <Link
+              key={action.key}
+              href={action.href}
+              className="px-3 py-1.5 rounded text-sm text-fg-muted transition-all duration-200 hover:bg-bg-secondary hover:text-primary active:scale-95"
+            >
+              {action.label}
+            </Link>
+          ))}
         </nav>
 
         <div className="flex items-center gap-1">
@@ -66,22 +103,7 @@ export default function Header({ siteTitle, menus, showSearch }: { siteTitle: st
       </div>
 
       {/* 移动端导航 */}
-      {open && (
-        <nav className="md:hidden border-t border-line bg-bg px-4 py-2 anim-scale-in">
-          {menus.map((item) => (
-            <Link
-              key={item.url}
-              href={item.url}
-              onClick={() => setOpen(false)}
-              className={`block px-3 py-2.5 rounded text-sm transition-colors duration-200 ${
-                pathname === item.url ? 'text-primary bg-bg-secondary font-medium' : 'text-fg-muted'
-              }`}
-            >
-              {item.name}
-            </Link>
-          ))}
-        </nav>
-      )}
+      <MobileNav open={open} menus={menus} actions={actions} onClose={() => setOpen(false)} />
     </header>
   );
 }

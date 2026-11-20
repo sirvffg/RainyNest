@@ -3,6 +3,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { requireSession, requirePermission } from '@/lib/api-auth';
+import { pluginApiGate } from '@/lib/plugin/api-gate';
 import { db } from '@/lib/prisma';
 
 export async function GET() {
@@ -12,7 +13,24 @@ export async function GET() {
     where: session ? {} : { status: 'PUBLISHED' },
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
   });
-  return NextResponse.json({ list });
+  // 插件扩展点：pageListItemField / pageListItemOperation（仅登录后台需要）
+  let fields: { key: string; label: string; width?: number }[] = [];
+  let operations: unknown[] = [];
+  let rows: unknown[] = list;
+  if (session) {
+    try {
+      const { collectListFields, renderListFieldValues, collectListOperations } = await import('@/lib/plugin/ui');
+      const defs = await collectListFields('pageListItemField');
+      fields = defs.map(({ key, label, width }) => ({ key, label, width }));
+      if (defs.length > 0) {
+        rows = await Promise.all(
+          list.map(async (page) => ({ ...page, _fields: await renderListFieldValues(defs, page) }))
+        );
+      }
+      operations = await collectListOperations('pageListItemOperation');
+    } catch { /* 插件系统未就绪 */ }
+  }
+  return NextResponse.json({ list: rows, fields, operations });
 }
 
 const createSchema = z.object({
@@ -22,9 +40,13 @@ const createSchema = z.object({
   summary: z.string().max(1000).optional().nullable(),
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
   order: z.number().int().optional(),
+  showSidebar: z.boolean().optional(),
+  sidebarContent: z.string().max(5000).optional().nullable(),
 });
 
 export async function POST(req: NextRequest) {
+  const blocked = await pluginApiGate(req);
+  if (blocked) return blocked;
   const check = await requirePermission('page:create');
   if (check) return check;
 
