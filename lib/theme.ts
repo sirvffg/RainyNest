@@ -22,6 +22,8 @@ export interface ThemeMeta {
   minRainyNestVersion?: string;
   /** 允许的最高核心版本（含），如 "2.0.0" */
   maxRainyNestVersion?: string;
+  /** 主题自定义前台路由（0.3.4 起支持），挂载在 /t/<path> */
+  routes?: import('@rainynest/plugin-types/theme').ThemeRouteDef[];
   supports: string[];
   configSchema: Record<string, any>;
 }
@@ -168,4 +170,11 @@ export async function getThemeBySlug(slug: string): Promise<ActiveTheme | null> 
 
 export function clearThemeCache() {
   g.__rnActiveTheme = undefined;
+}
+
+// 获取当前激活主题的自定义路由列表（不兼容主题返回空数组）
+export async function getThemeRoutes(): Promise<import('@rainynest/plugin-types/theme').ThemeRouteDef[]> {
+  const theme = await getActiveTheme();
+  if (!theme || !isThemeCompatible(theme)) return [];
+  return Array.isArray(theme.routes) ? theme.routes : [];
 }

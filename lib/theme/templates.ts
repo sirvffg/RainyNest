@@ -32,7 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ComponentType, ReactNode } from 'react';
 import { getActiveTheme } from '../theme';
-import { pluginTemplateRegistry, themeTemplateRegistry } from './generated-templates';
+import { pluginTemplateRegistry, themeRouteRegistry, themeTemplateRegistry } from './generated-templates';
 
 // ── 通用数据结构（主题作者可见） ────────────────────────────────
 
@@ -483,6 +483,45 @@ export async function resolveSystemTemplateForTheme<T = unknown>(
     return { default: comp as ComponentType<T> };
   }
   return null;
+}
+
+/**
+ * 解析当前激活主题的自定义路由模板（templates/routes/<path>.tsx，挂载于 /t/<path>）。
+ * 优先查构建期注册表（支持 @/ 别名与 'use client'），否则运行时编译兜底；
+ * 路由不存在返回 null（调用方 notFound）。
+ */
+export async function resolveThemeRouteTemplate(
+  routePath: string
+): Promise<{ default: ComponentType<unknown> } | null> {
+  if (!TEMPLATE_NAME_RE.test(routePath)) return null;
+  const theme = await getActiveTheme();
+  if (!theme) return null;
+
+  // 1. 构建期注册表
+  const registered = themeRouteRegistry[theme.slug]?.[routePath] as Record<string, unknown> | undefined;
+  const comp = registered?.default;
+  if (comp && (typeof comp === 'function' || typeof comp === 'object')) {
+    return { default: comp as ComponentType<unknown> };
+  }
+
+  // 2. 运行时编译兜底（新装/未重启，仅服务端 TSX）
+  const absPath = path.join(
+    process.cwd(),
+    'scripts',
+    'themes',
+    theme.slug,
+    'templates',
+    'routes',
+    `${routePath}.tsx`
+  );
+  if (!fs.existsSync(absPath)) return null;
+
+  const mod = await compileAndLoad(absPath, `theme-${theme.slug}-route-${routePath}`);
+  const resolved = (mod.default ?? mod) as unknown;
+  if (typeof resolved !== 'function') {
+    throw new Error(`主题路由模板 ${absPath} 缺少 default 导出组件`);
+  }
+  return { default: resolved as ComponentType<unknown> };
 }
 
 /**

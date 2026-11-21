@@ -7,6 +7,10 @@ export const themeTemplateRegistry: Record<string, Record<string, unknown>> = {
 
 };
 
+export const themeRouteRegistry: Record<string, Record<string, unknown>> = {
+
+};
+
 export const pluginTemplateRegistry: Record<string, Record<string, unknown>> = {
 
 };

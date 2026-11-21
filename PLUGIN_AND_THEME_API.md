@@ -350,6 +350,7 @@ scripts/themes/<slug>/
   "preview": "/themes/default/preview.png",
   "minRainyNestVersion": "1.0.0",
   "maxRainyNestVersion": "2.0.0",
+  "routes": [{ "path": "timeline", "title": "时间线" }],
   "supports": ["dark-mode", "custom-css"],
   "configSchema": {
     "colors": {
@@ -419,6 +420,7 @@ interface ThemeMeta {
   preview?: string;
   minRainyNestVersion?: string;       // 最低核心版本（不满足则主题不可加载、不可激活）
   maxRainyNestVersion?: string;       // 最高核心版本（含），超出同样不可加载
+  routes?: ThemeRouteDef[];           // 主题自定义路由（0.3.4 起），挂载 /t/<path>
   supports: string[];
   configSchema: Record<string, any>;
 }
@@ -432,7 +434,15 @@ interface ActiveTheme extends ThemeMeta {
 }
 ```
 
-### 5. 主题覆盖系统页面模板（lib/theme/templates.ts）
+### 5.1 主题自定义前台路由（themeRoutes，0.3.4 起）
+
+主题可在 `theme.json` 声明 `routes: [{ "path": "timeline", "title": "时间线" }]` 并提供 `templates/routes/timeline.tsx`（Props：`ThemeRouteTemplateProps { site, config }`），宿主通过 `app/(site)/t/[...path]/page.tsx` 挂载到 **`/t/<path>`**，自动套用主题 layout 壳。
+
+- 加载优先级同系统模板：构建期注册表（支持 `@/` 别名与 `'use client'`）→ 运行时 esbuild 兜底；`resolveThemeRouteTemplate()` 在 [lib/theme/templates.ts](lib/theme/templates.ts)。
+- 前台导航**不自动注入菜单**（对齐 Halo）：管理员在后台「菜单管理」手动添加菜单项，URL 填 `/t/<path>`。
+- 未声明或主题不兼容核心版本时，`/t/*` 一律 404；路由仅支持单段路径。
+
+### 6. 主题覆盖系统页面模板（lib/theme/templates.ts）
 
 主题在 `scripts/themes/<slug>/templates/<name>.tsx` 放置模板即可覆盖对应页面，存在即覆盖系统内置渲染；已安装主题走构建期注册表，新装未重启的走运行时 esbuild 兜底，编译失败都会自动回退内置模板。
 
@@ -531,7 +541,7 @@ export default function ThemeLayout({ site, header, sidebar, footer, footerNodes
 
 主题模板中的 Tailwind class 由 `tailwind.config.ts` 的 `./scripts/themes/**/templates/**` 扫描生成，自定义新 class 后需重启 dev/build 一次。在线预览走 `/preview?theme=<slug>`，若目标主题提供 `home.tsx` 会直接渲染该模板。
 
-### 6. 主题覆盖插件模板（theme-integration.ts）
+### 7. 主题覆盖插件模板（theme-integration.ts）
 
 Halo 风格「主题优先」设计：主题可以选择性覆盖任何插件的默认 UI 模板。
 
@@ -552,7 +562,7 @@ const mod = await resolvePluginTemplate('related-posts', 'stats-card');
 // 都没有 → 返回 null
 ```
 
-### 7. 主题与插件协作示意
+### 8. 主题与插件协作示意
 
 ```
 ┌─────────────────────────────────────────────────────┐

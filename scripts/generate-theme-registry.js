@@ -7,6 +7,7 @@
 // 覆盖范围：
 //   scripts/themes/<theme>/templates/<name>.tsx            → 系统页面模板
 //   scripts/themes/<theme>/templates/plugins/<p>/<n>.tsx   → 主题覆盖插件模板
+//   scripts/themes/<theme>/templates/routes/<path>.tsx     → 主题自定义路由页面（/t/<path>）
 //   scripts/plugins/<plugin>/templates/<name>.tsx          → 插件自带模板
 //
 // 未进入注册表的新装模板仍由 lib/theme/templates.ts 运行时编译兜底。
@@ -50,12 +51,13 @@ function directTemplates(dir, relPrefix, bucket) {
     const absPath = path.join(dir, file.name);
     if (!syntaxOk(absPath)) continue;
     const name = file.name.replace(/\.tsx$/, '');
-    bucket.push({ key: `${relPrefix}${name}`, rel: path.relative(path.dirname(OUT_FILE), absPath).split(path.sep).join('/') });
+    bucket.push({ key: `${relPrefix}${name}`, rel: path.relative(path.dirname(OUT_FILE), absPath).split(path.sep).join('/').replace(/\.tsx$/, '') });
   }
 }
 
-// ── 主题模板（系统页面 + 插件覆盖）────────────────────────────
+// ── 主题模板（系统页面 + 插件覆盖 + 自定义路由）────────────────
 const themeEntries = new Map(); // slug → [{ key, rel }]
+const themeRouteEntries = new Map(); // slug → [{ key, rel }]（templates/routes/<path>.tsx）
 if (fs.existsSync(THEMES_DIR)) {
   for (const themeDir of fs.readdirSync(THEMES_DIR, { withFileTypes: true })) {
     if (!themeDir.isDirectory() || isResidueDir(themeDir.name)) continue;
@@ -75,7 +77,12 @@ if (fs.existsSync(THEMES_DIR)) {
       }
     }
 
+    // 主题自定义路由模板：templates/routes/<path>.tsx
+    const routeBucket = [];
+    directTemplates(path.join(tplDir, 'routes'), '', routeBucket);
+
     if (bucket.length > 0) themeEntries.set(slug, bucket);
+    if (routeBucket.length > 0) themeRouteEntries.set(slug, routeBucket);
   }
 }
 
@@ -119,13 +126,30 @@ for (const [slug, entries] of [...pluginEntries.entries()].sort(([a], [b]) => a.
   pluginRegistryBody.push(`  '${slug}': {\n${lines.join('\n')}\n  },`);
 }
 
+const themeRouteImports = [];
+const themeRouteRegistryBody = [];
+for (const [slug, entries] of [...themeRouteEntries.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+  const lines = entries
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map((entry) => {
+      const ident = `themeRoute${counter++}`;
+      themeRouteImports.push(`import * as ${ident} from '${entry.rel}';`);
+      return `    '${entry.key}': ${ident},`;
+    });
+  themeRouteRegistryBody.push(`  '${slug}': {\n${lines.join('\n')}\n  },`);
+}
+
 const content = `// 此文件由 scripts/generate-theme-registry.js 自动生成，请勿手动修改。
 // dev/build 前会自动重新生成；新增主题或插件模板后需重启 dev 或重新 build 才能获得
 // @/ 别名与 'use client' 支持（未重启时由运行时编译兜底，仅支持服务端模板）。
-${[...imports, ...pluginImports].join('\n')}
+${[...imports, ...themeRouteImports, ...pluginImports].join('\n')}
 
 export const themeTemplateRegistry: Record<string, Record<string, unknown>> = {
 ${registryBody.join('\n')}
+};
+
+export const themeRouteRegistry: Record<string, Record<string, unknown>> = {
+${themeRouteRegistryBody.join('\n')}
 };
 
 export const pluginTemplateRegistry: Record<string, Record<string, unknown>> = {
@@ -138,8 +162,9 @@ const prev = fs.existsSync(OUT_FILE) ? fs.readFileSync(OUT_FILE, 'utf8') : '';
 if (prev !== content) {
   fs.writeFileSync(OUT_FILE, content);
   const themeCount = [...themeEntries.values()].reduce((n, list) => n + list.length, 0);
+  const routeCount = [...themeRouteEntries.values()].reduce((n, list) => n + list.length, 0);
   const pluginCount = [...pluginEntries.values()].reduce((n, list) => n + list.length, 0);
-  console.log(`[theme-registry] ✓ 已注册主题模板 ${themeCount} 个、插件模板 ${pluginCount} 个`);
+  console.log(`[theme-registry] ✓ 已注册主题模板 ${themeCount} 个、主题路由模板 ${routeCount} 个、插件模板 ${pluginCount} 个`);
 } else {
   console.log('[theme-registry] ✓ 模板无变化');
 }
