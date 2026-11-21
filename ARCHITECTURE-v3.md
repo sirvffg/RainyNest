@@ -728,12 +728,12 @@ npm install @rainynest/plugin-types@<version> --registry=https://registry.npmjs.
 | 项                                                        | 现状                                                                               |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | 部署形态                                                     | 单实例；SQLite 写锁 + 插件独立库不适合多副本                                                      |
-| `commentEditorReplace` / `commentListItemContentReplace` | 已提供收集器，前台仍使用内置评论 UI，未做逐条评论组件注入                                                   |
+| `commentEditorReplace` / `commentListItemContentReplace` | 已接入前台：编辑器与逐条评论正文由插件组件预渲染，渲染失败回退内置实现；输出为服务端静态 HTML，不含水合交互        |
 | `apiMiddleware`                                          | 仅接入 8 个公开接口，后台与其余路由未覆盖                                                           |
 | 正文安全                                                     | 文章 HTML 不做白名单清洗，仅管理员可写；评论走严格清洗                                                   |
 | Mermaid / PlantUML                                       | Mermaid 走 CDN 按需加载；PlantUML 依赖公共 SVG 服务                                          |
 | 原生模块                                                     | `better-sqlite3`、`bcryptjs` 等在 `serverExternalPackages` 中排除打包，Docker 需匹配 Node 版本 |
-| 主题模板                                                     | 运行时 esbuild 编译，模板内不能使用 `@/` 别名与客户端组件                                             |
+| 主题模板                                                     | 构建期注册表优先（支持 `@/` 与 `'use client'`），新装未重启时回退运行时 esbuild（仅服务端）                 |
 | FTS5                                                     | 依赖 SQLite 编译选项；初始化失败时搜索降级                                                        |
 
 ***
