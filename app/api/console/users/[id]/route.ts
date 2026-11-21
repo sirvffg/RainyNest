@@ -8,6 +8,26 @@ import bcrypt from 'bcryptjs';
 
 type Ctx = { params: Promise<{ id: string }> };
 
+// 用户白名单字段：绝不返回 passwordHash / token / extra 等敏感字段
+const userSelect = {
+  id: true,
+  username: true,
+  displayName: true,
+  email: true,
+  avatar: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  lastLoginAt: true,
+  roles: {
+    select: {
+      userId: true,
+      roleId: true,
+      role: { select: { id: true, name: true, displayName: true } },
+    },
+  },
+} as const;
+
 const putSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
   // 注册用户可能没有邮箱 '' / null 视为不修改
@@ -54,7 +74,10 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   }
 
   const { id } = await params;
-  const existing = await db.user.findUnique({ where: { id }, include: { roles: true } });
+  const existing = await db.user.findUnique({
+    where: { id },
+    select: { displayName: true, email: true, status: true },
+  });
   if (!existing) return NextResponse.json({ error: '用户不存在' }, { status: 404 });
 
   const data: Record<string, unknown> = {
@@ -71,7 +94,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       const updated = await tx.user.update({
         where: { id },
         data,
-        include: { roles: { include: { role: { select: { id: true, name: true, displayName: true } } } } },
+        select: userSelect,
       });
       // 角色整体替换
       if (input.roleIds !== undefined) {
@@ -105,7 +128,7 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
 
   const existing = await db.user.findUnique({
     where: { id },
-    include: { roles: { include: { role: { select: { name: true } } } } },
+    select: { roles: { select: { role: { select: { name: true } } } } },
   });
   if (!existing) return NextResponse.json({ error: '用户不存在' }, { status: 404 });
 

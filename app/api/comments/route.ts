@@ -64,11 +64,11 @@ export async function GET(req: NextRequest) {
   try {
     const { collectListOperations, collectCommentSubjectRefs } = await import('@/lib/plugin/ui');
     [operations, replyOperations] = await Promise.all([
-      collectListOperations('commentListItemOperation'),
-      collectListOperations('replyListItemOperation'),
+      collectListOperations('commentListItemOperation', session.user.permissions),
+      collectListOperations('replyListItemOperation', session.user.permissions),
     ]);
     // commentSubjectRef：评论来源展示（第一个提供者生效）
-    const refs = await collectCommentSubjectRefs();
+    const refs = await collectCommentSubjectRefs(session.user.permissions);
     const ref = refs[0];
     if (ref) {
       rows = list.map((c) => {

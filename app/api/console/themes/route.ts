@@ -84,14 +84,15 @@ export async function GET() {
     });
   }
 
-  // 插件扩展点：themeListTab / themeListItemOperation
+  // 插件扩展点：themeListTab / themeListItemOperation（按当前用户权限过滤）
   let tabs: unknown[] = [];
   let operations: unknown[] = [];
+  const permissions = session.user.permissions;
   try {
     const { collectTabs, collectListOperations } = await import('@/lib/plugin/ui');
     [tabs, operations] = await Promise.all([
-      collectTabs('themeListTab'),
-      collectListOperations('themeListItemOperation'),
+      collectTabs('themeListTab', permissions),
+      collectListOperations('themeListItemOperation', permissions),
     ]);
   } catch { /* 插件系统未就绪 */ }
 

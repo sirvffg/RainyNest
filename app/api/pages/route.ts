@@ -20,14 +20,14 @@ export async function GET() {
   if (session) {
     try {
       const { collectListFields, renderListFieldValues, collectListOperations } = await import('@/lib/plugin/ui');
-      const defs = await collectListFields('pageListItemField');
+      const defs = await collectListFields('pageListItemField', session.user.permissions);
       fields = defs.map(({ key, label, width }) => ({ key, label, width }));
       if (defs.length > 0) {
         rows = await Promise.all(
           list.map(async (page) => ({ ...page, _fields: await renderListFieldValues(defs, page) }))
         );
       }
-      operations = await collectListOperations('pageListItemOperation');
+      operations = await collectListOperations('pageListItemOperation', session.user.permissions);
     } catch { /* 插件系统未就绪 */ }
   }
   return NextResponse.json({ list: rows, fields, operations });

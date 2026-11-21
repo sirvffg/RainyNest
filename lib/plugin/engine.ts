@@ -7,7 +7,8 @@ import { analytics } from '../analytics';
 import { getSiteSetting } from '../site';
 import { getPluginDb } from '../plugin-db';
 import { ensurePluginConfigFile, getPluginConfigStore, getPluginJsonStore } from './json-store';
-import { importRoleTemplates } from './role-templates';
+import { importPluginPermissions, importRoleTemplates } from './role-templates';
+import { getCoreVersion, satisfiesCoreVersion } from './semver';
 import type {
   ExtensionHandlers,
   LoadedPlugin,
@@ -89,6 +90,17 @@ export async function bootPlugins(): Promise<void> {
         } catch { /* DB 未就绪 */ }
         if (dbEntry && !dbEntry.isActive) continue; // 数据库禁用的跳过
 
+        // 核心版本兼容性：manifest 的 requiresCore 不满足时跳过该插件
+        if (meta.requiresCore) {
+          const coreVersion = getCoreVersion();
+          if (!satisfiesCoreVersion(coreVersion, meta.requiresCore)) {
+            console.warn(
+              `[Plugin] ${meta.name || dir}(${dir}) 已跳过：要求核心版本 ${meta.requiresCore}，当前核心版本 ${coreVersion}`
+            );
+            continue;
+          }
+        }
+
         try {
           const entryFile = (meta.entry || 'index.ts').replace(/\.tsx?$/, '.js');
           const entryPath = path.join(PLUGINS_DIR, dir, entryFile);
@@ -129,7 +141,12 @@ export async function bootPlugins(): Promise<void> {
 
     g.__rnPlugins = plugins;
 
-    // 导入插件声明的角色模板（失败只记日志，不影响插件加载）
+    // 导入插件声明的权限点与角色模板（失败只记日志，不影响插件加载）
+    try {
+      await importPluginPermissions(plugins);
+    } catch (err) {
+      console.error('[Plugin] permissions 导入失败:', err);
+    }
     try {
       await importRoleTemplates(plugins);
     } catch (err) {
@@ -368,8 +385,23 @@ export async function collectPluginDefinitions(point: keyof ExtensionHandlers): 
   const out: ResolvedDefinition[] = [];
   for (const plugin of g.__rnPlugins || []) {
     const value = (plugin.handlers as Record<string, unknown>)[point as string];
-    if (!Array.isArray(value)) continue;
-    for (const def of value) {
+    if (value === null || value === undefined) continue;
+
+    // 扩展点有两种形态：直接数组（声明式）或函数返回数组（函数型 SPI，如 injectHeaderAction / editorCreate）
+    let resolved: unknown = value;
+    if (typeof value === 'function') {
+      try {
+        resolved = await (value as () => unknown)();
+      } catch (err) {
+        // 单个插件函数抛错只跳过该插件，不影响其他插件
+        console.error(`[Plugin] ${plugin.slug} ${String(point)} failed:`, err);
+        continue;
+      }
+    }
+    if (resolved === null || resolved === undefined) continue;
+
+    const items = Array.isArray(resolved) ? resolved : [resolved];
+    for (const def of items) {
       out.push({ pluginSlug: plugin.slug, pluginName: plugin.meta.name, def });
     }
   }

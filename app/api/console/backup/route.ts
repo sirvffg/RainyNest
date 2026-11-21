@@ -46,14 +46,15 @@ export async function GET(req: NextRequest) {
 
   try {
     const backups = await listBackups();
-    // 插件扩展点：backupTab / backupListItemOperation
+    // 插件扩展点：backupTab / backupListItemOperation（按当前用户权限过滤）
     let tabs: unknown[] = [];
     let operations: unknown[] = [];
+    const permissions = check.session?.user?.permissions;
     try {
       const { collectTabs, collectListOperations } = await import('@/lib/plugin/ui');
       [tabs, operations] = await Promise.all([
-        collectTabs('backupTab'),
-        collectListOperations('backupListItemOperation'),
+        collectTabs('backupTab', permissions),
+        collectListOperations('backupListItemOperation', permissions),
       ]);
     } catch { /* 插件系统未就绪 */ }
     return NextResponse.json({ backups, tabs, operations });

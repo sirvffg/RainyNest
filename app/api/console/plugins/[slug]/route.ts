@@ -29,6 +29,18 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
   if (!existing && !fs.existsSync(pluginDir)) {
     return NextResponse.json({ error: '插件不存在' }, { status: 404 });
   }
+  // 内置插件（native）不允许卸载：以磁盘清单为准
+  const diskManifestPath = path.join(pluginDir, 'plugin.json');
+  if (fs.existsSync(diskManifestPath)) {
+    try {
+      const diskMeta = JSON.parse(fs.readFileSync(diskManifestPath, 'utf-8'));
+      if (diskMeta?.native === true) {
+        return NextResponse.json({ error: '内置插件不可卸载' }, { status: 403 });
+      }
+    } catch {
+      // 清单解析失败时继续走原有校验，不阻断卸载
+    }
+  }
   if (existing?.source === 'builtin') {
     return NextResponse.json({ error: '内置插件不允许卸载 如需关闭请使用停用' }, { status: 400 });
   }

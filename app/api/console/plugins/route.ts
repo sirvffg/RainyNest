@@ -5,6 +5,7 @@ import path from 'node:path';
 import { requireSession } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
 import { getPluginConfigStore } from '@/lib/plugin/json-store';
+import { getCoreVersion, satisfiesCoreVersion } from '@/lib/plugin/semver';
 
 export const runtime = 'nodejs';
 
@@ -43,6 +44,12 @@ export async function GET() {
     const slug = String(meta.slug);
     scanned.add(slug);
     const dbEntry = bySlug.get(slug);
+    // requiresCore 原样随 meta 展开返回；不满足时附 loadError 说明原因
+    const requiresCore = typeof meta.requiresCore === 'string' ? meta.requiresCore : '';
+    const loadError =
+      requiresCore && !satisfiesCoreVersion(getCoreVersion(), requiresCore)
+        ? `要求核心版本 ${requiresCore}，当前核心版本 ${getCoreVersion()}`
+        : undefined;
     list.push({
       ...meta,
       id: dbEntry?.id ?? undefined,
@@ -51,6 +58,7 @@ export async function GET() {
       source: dbEntry?.source ?? 'builtin',
       installedAt: dbEntry?.installedAt ?? null,
       updatedAt: dbEntry?.updatedAt ?? null,
+      loadError,
     });
   }
 
@@ -78,18 +86,19 @@ export async function GET() {
   let tabs: unknown[] = [];
   let installTabs: unknown[] = [];
   let rows: unknown[] = list;
+  const permissions = session.user.permissions;
   try {
     const { collectListFields, renderListFieldValues, collectListOperations, collectTabs } = await import('@/lib/plugin/ui');
-    const defs = await collectListFields('pluginListItemField');
+    const defs = await collectListFields('pluginListItemField', permissions);
     fields = defs.map(({ key, label, width }) => ({ key, label, width }));
     if (defs.length > 0) {
       rows = await Promise.all(
         list.map(async (item) => ({ ...item, _fields: await renderListFieldValues(defs, item) }))
       );
     }
-    operations = await collectListOperations('pluginListItemOperation');
-    tabs = await collectTabs('pluginDetailTab');
-    installTabs = await collectTabs('pluginInstallTab');
+    operations = await collectListOperations('pluginListItemOperation', permissions);
+    tabs = await collectTabs('pluginDetailTab', permissions);
+    installTabs = await collectTabs('pluginInstallTab', permissions);
   } catch { /* 插件系统未就绪 */ }
 
   return NextResponse.json({ list: rows, fields, operations, tabs, installTabs });

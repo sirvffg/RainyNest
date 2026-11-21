@@ -6,6 +6,26 @@ import { requireSession, requirePermission } from '@/lib/api-auth';
 import { getSiteSetting, saveSiteSetting } from '@/lib/site';
 import { db } from '@/lib/prisma';
 import { clearThemeCache } from '@/lib/theme';
+import type { SiteSetting } from '@prisma/client';
+
+// 密钥字段：GET 一律脱敏为空串 + hasXxx 标记；PUT 传空 / 掩码时保留数据库原值
+const SECRET_FIELDS = [
+  'smtpPass',
+  'oauthGithubSecret',
+  'oauthGoogleSecret',
+  'oauthWechatSecret',
+  'ldapBindPassword',
+] as const;
+
+/** 返回给前端的设置：密钥字段置空，仅暴露是否已设置 */
+function maskSecrets(site: SiteSetting) {
+  const payload: Record<string, unknown> = { ...site };
+  for (const key of SECRET_FIELDS) {
+    payload[`has${key.charAt(0).toUpperCase()}${key.slice(1)}`] = Boolean(site[key]);
+    payload[key] = '';
+  }
+  return payload;
+}
 
 // GET（登录即可读）
 export async function GET() {
@@ -14,7 +34,7 @@ export async function GET() {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
   const site = await getSiteSetting();
-  return NextResponse.json(site);
+  return NextResponse.json(maskSecrets(site));
 }
 
 // PUT（需站点配置权限 site:config）— 只允许 SiteSetting 已有字段，多余字段直接丢弃
@@ -96,7 +116,15 @@ export async function PUT(req: NextRequest) {
   }
 
   try {
-    const site = await saveSiteSetting(parsed.data);
+    const data = { ...parsed.data };
+    // 密钥字段：空串 / null 视为「未修改」，保留数据库已有值，避免脱敏导致密钥被清空
+    for (const key of SECRET_FIELDS) {
+      const value = data[key];
+      if (value === undefined) continue;
+      if (value === null || value.trim() === '') delete data[key];
+    }
+
+    const site = await saveSiteSetting(data);
 
     // 主色同步写入当前主题配置：外观页改色后刷新依然生效（SSR 由主题 cssVars 注入）
     const color = parsed.data.primaryColor;
@@ -120,7 +148,7 @@ export async function PUT(req: NextRequest) {
     }
 
     revalidatePath('/', 'layout');
-    return NextResponse.json(site);
+    return NextResponse.json(maskSecrets(site));
   } catch (err) {
     console.error('[api/console/settings] save failed:', err);
     return NextResponse.json({ error: '保存站点设置失败' }, { status: 500 });

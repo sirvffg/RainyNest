@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache';
 import AdmZip from 'adm-zip';
 import { db } from './prisma';
 import { reloadPlugin } from './plugin/engine';
+import { compareSemver, getCoreVersion, satisfiesCoreVersion } from './plugin/semver';
 import { clearThemeCache } from './theme';
 import { runPluginMigrations } from './plugin/migrator';
 
@@ -84,20 +85,6 @@ function copyDirRecursive(src: string, dest: string) {
   }
 }
 
-// 版本比较：a > b 返回 1，a < b 返回 -1，相等返回 0
-function compareVersions(a: string, b: string): number {
-  const pa = a.split(/[.-]/).map((x) => (isNaN(Number(x)) ? x : Number(x)));
-  const pb = b.split(/[.-]/).map((x) => (isNaN(Number(x)) ? x : Number(x)));
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const va = pa[i] ?? 0;
-    const vb = pb[i] ?? 0;
-    if (va === vb) continue;
-    if (typeof va === 'number' && typeof vb === 'number') return va > vb ? 1 : -1;
-    return String(va) > String(vb) ? 1 : -1;
-  }
-  return 0;
-}
-
 // 目录名匹配安装器产生的临时目录（备份/待删），列表扫描时跳过
 const TEMP_DIR_RE = /(\.bak-\d+|\.deleted-\d+)$/;
 
@@ -162,10 +149,37 @@ export async function installFromBuffer(buffer: Buffer, filename: string, opts: 
     const manifest = JSON.parse(fs.readFileSync(path.join(tmp, kind === 'plugin' ? 'plugin.json' : 'theme.json'), 'utf-8'));
     if (!manifest.slug || !SLUG_RE.test(manifest.slug)) throw new Error(`slug 非法: ${manifest.slug}（需匹配 ^[a-z0-9][a-z0-9-]*$）`);
     if (!manifest.name || !manifest.version) throw new Error('manifest 缺少 name / version');
-    if (manifest.specVersion && manifest.specVersion !== '1.0') throw new Error(`specVersion ${manifest.specVersion} 不受支持（需要 1.0）`);
+    if (manifest.specVersion && manifest.specVersion !== '1.0') {
+      throw new Error(
+        `specVersion ${manifest.specVersion} 不受支持：specVersion 是清单（manifest）格式版本，当前只接受 "1.0"，与插件 SPI / 类型包版本无关`
+      );
+    }
+
+    // 核心版本兼容性：上传时先校验 requiresCore，避免装完才发现不兼容
+    if (manifest.requiresCore) {
+      const coreVersion = getCoreVersion();
+      if (!satisfiesCoreVersion(coreVersion, String(manifest.requiresCore))) {
+        throw new Error(
+          `插件要求核心版本 ${manifest.requiresCore}，当前核心版本 ${coreVersion}，无法安装`
+        );
+      }
+    }
 
     const slug: string = manifest.slug;
     const destDir = path.join(kind === 'plugin' ? PLUGINS_DIR : THEMES_DIR, slug);
+
+    // 内置插件（native）禁止被上传包覆盖
+    if (kind === 'plugin' && fs.existsSync(destDir)) {
+      let existingMeta: Record<string, unknown> | null = null;
+      try {
+        existingMeta = JSON.parse(fs.readFileSync(path.join(destDir, 'plugin.json'), 'utf-8'));
+      } catch {
+        existingMeta = null; // 旧清单损坏时不作为阻断面
+      }
+      if (existingMeta?.native === true) {
+        throw new Error(`插件 ${slug} 为内置插件（native），不允许上传包覆盖`);
+      }
+    }
 
     // 升级校验：新版本必须大于已装版本（有磁盘目录但无 DB 记录视为首装）
     const existing =
@@ -174,7 +188,7 @@ export async function installFromBuffer(buffer: Buffer, filename: string, opts: 
         : await db.theme.findUnique({ where: { slug } });
     const existedOnDisk = fs.existsSync(destDir);
     const upgraded = !opts.dev && (existedOnDisk || !!existing);
-    if (!opts.dev && upgraded && existing && compareVersions(String(manifest.version), existing.version) <= 0) {
+    if (!opts.dev && upgraded && existing && compareSemver(String(manifest.version), existing.version) <= 0) {
       throw new Error(`版本必须大于已装版本（当前 ${existing.version}，上传 ${manifest.version}）`);
     }
 

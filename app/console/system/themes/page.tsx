@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Check, Eye, GitBranch, Loader2, LogOut, Palette, Settings2, Trash2, Upload, Users } from 'lucide-react';
+import { Check, Eye, GitBranch, Loader2, Palette, Settings2, Trash2, Upload, Users } from 'lucide-react';
 import ToastProvider, { useToast } from '@/components/admin/Toast';
 import Modal from '@/components/admin/Modal';
 
@@ -119,7 +119,7 @@ function ThemesContent() {
     setUninstalling(false);
   }
 
-  // 预览主题：写入 httpOnly cookie 后新窗口打开首页
+  // 预览主题：新窗口打开独立预览路由（不写 cookie，避免全站动态化）
   async function previewTheme(theme: ThemeItem) {
     if (previewing) return;
     setPreviewing(theme.slug);
@@ -133,15 +133,6 @@ function ThemesContent() {
       toast(err instanceof Error ? err.message : '预览失败 请稍后重试', 'error');
     }
     setPreviewing(null);
-  }
-
-  async function exitPreview() {
-    try {
-      await fetch('/api/console/themes/preview', { method: 'DELETE' });
-      toast('已退出主题预览');
-    } catch {
-      toast('退出预览失败 请稍后重试', 'error');
-    }
   }
 
   // Git 仓库安装主题
@@ -177,14 +168,6 @@ function ThemesContent() {
       {/* 页头 */}
       <div className="anim-fade-in-up flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={exitPreview}
-            className="inline-flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
-          >
-            <LogOut className="h-4 w-4" />
-            退出预览
-          </button>
           <button
             type="button"
             onClick={() => setGitOpen(true)}

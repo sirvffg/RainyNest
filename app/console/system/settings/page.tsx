@@ -137,6 +137,9 @@ function SettingsContent() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(String(res.status));
+      // 接口返回脱敏后的设置：同步状态，密钥字段回到空值 + hasXxx 标记
+      const saved = await res.json().catch(() => null);
+      if (saved && typeof saved === 'object') setSettings(saved as SettingsMap);
       // 保存外观时同步主色变量 即时生效；hover 色按主题规则（-32）一起派生，避免沿用旧色
       const color = typeof settings.primaryColor === 'string' ? settings.primaryColor : '';
       if (/^#[0-9a-fA-F]{6}$/.test(color)) {
@@ -183,6 +186,24 @@ function SettingsContent() {
           value={String(settings[key] ?? '')}
           onChange={(e) => set(key, e.target.value)}
           placeholder={placeholder}
+          className={inputClass}
+        />
+      </div>
+    );
+  }
+
+  // 密钥字段：仅显示是否已设置，留空表示不修改
+  function secret(key: string, label: string) {
+    const hasFlag = Boolean(settings[`has${key.charAt(0).toUpperCase()}${key.slice(1)}`]);
+    return (
+      <div key={key} className="space-y-1.5">
+        <label className="text-sm text-fg-muted">{label}</label>
+        <input
+          type="password"
+          value={String(settings[key] ?? '')}
+          onChange={(e) => set(key, e.target.value)}
+          placeholder={hasFlag ? '已设置 留空不修改' : '未设置'}
+          autoComplete="new-password"
           className={inputClass}
         />
       </div>
@@ -378,16 +399,7 @@ function SettingsContent() {
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 {text('smtpUser', 'SMTP 用户名')}
-                <div className="space-y-1.5">
-                  <label className="text-sm text-fg-muted">SMTP 密码 / 授权码</label>
-                  <input
-                    type="password"
-                    value={String(settings.smtpPass ?? '')}
-                    onChange={(e) => set('smtpPass', e.target.value)}
-                    className={inputClass}
-                    autoComplete="new-password"
-                  />
-                </div>
+                {secret('smtpPass', 'SMTP 密码 / 授权码')}
               </div>
               {text('smtpFrom', '发件人地址', 'noreply@example.com')}
               <p className="rounded bg-bg-secondary px-3.5 py-2.5 text-xs leading-relaxed text-fg-muted">
@@ -410,11 +422,11 @@ function SettingsContent() {
               <p className="text-sm font-medium">第三方登录</p>
               <div className="grid gap-4 sm:grid-cols-2">
                 {text('oauthGithubId', 'GitHub Client ID')}
-                {text('oauthGithubSecret', 'GitHub Client Secret')}
+                {secret('oauthGithubSecret', 'GitHub Client Secret')}
                 {text('oauthGoogleId', 'Google Client ID')}
-                {text('oauthGoogleSecret', 'Google Client Secret')}
+                {secret('oauthGoogleSecret', 'Google Client Secret')}
                 {text('oauthWechatId', '微信 AppID')}
-                {text('oauthWechatSecret', '微信 AppSecret')}
+                {secret('oauthWechatSecret', '微信 AppSecret')}
               </div>
               <p className="text-xs text-fg-muted">
                 回调地址：站点的 /api/auth/callback/github、/api/auth/callback/google、/api/auth/callback/wechat；留空即关闭对应登录方式。
@@ -427,7 +439,7 @@ function SettingsContent() {
                   {text('ldapUrl', 'LDAP 地址', 'ldap://127.0.0.1:389')}
                   <div className="grid gap-4 sm:grid-cols-2">
                     {text('ldapBindDn', 'Bind DN', 'cn=admin,dc=example,dc=com')}
-                    {text('ldapBindPassword', 'Bind 密码')}
+                    {secret('ldapBindPassword', 'Bind 密码')}
                   </div>
                   {text('ldapBaseDn', 'Base DN', 'ou=users,dc=example,dc=com')}
                   {text('ldapUserFilter', '用户过滤器', '(uid={username})')}

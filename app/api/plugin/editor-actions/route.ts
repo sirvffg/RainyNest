@@ -10,7 +10,7 @@ export async function GET() {
 
   try {
     const { collectEditorActions } = await import('@/lib/plugin/ui');
-    const actions = await collectEditorActions();
+    const actions = await collectEditorActions(session.user.permissions);
     return NextResponse.json({ list: actions });
   } catch {
     return NextResponse.json({ list: [] });

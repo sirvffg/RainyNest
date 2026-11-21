@@ -5,6 +5,8 @@ export interface CommentNode {
   createdAt: Date | string;
   user: { displayName: string; username: string; avatar?: string | null };
   replies: CommentNode[];
+  /** commentListItemContentReplace 插件预渲染的正文 HTML（存在时优先渲染） */
+  contentHtml?: string;
 }
 
 function formatDate(date: Date | string): string {
@@ -38,9 +40,16 @@ function CommentItem({ comment }: { comment: CommentNode }) {
               {formatDate(comment.createdAt)}
             </time>
           </div>
-          <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap break-words">
-            {comment.content}
-          </p>
+          {comment.contentHtml ? (
+            <div
+              className="mt-1 text-sm leading-relaxed break-words"
+              dangerouslySetInnerHTML={{ __html: comment.contentHtml }}
+            />
+          ) : (
+            <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap break-words">
+              {comment.content}
+            </p>
+          )}
         </div>
       </div>
 

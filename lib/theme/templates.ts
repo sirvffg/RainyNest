@@ -21,17 +21,18 @@
 //   photo        相册详情
 //   error        404
 //
-// 模板为纯服务端 JSX（esbuild 运行时编译为 CJS 后 require）：
-// - 可 import：react/jsx-runtime（自动注入）、react、next/link、lucide-react 等
-//   node_modules 内的 CJS 包
-// - 不可 import：'@/...' 别名路径、'use client' 组件（评论表单、灯箱等交互区块
-//   由宿主以 ReactNode 插槽 props.slots 传入，主题只决定摆放位置）
+// 模板编译为混合模式：
+// - 构建期注册表（predev/prebuild 生成）：已安装主题/插件模板按普通 Next 模块编译，
+//   支持 `@/` 别名与 `'use client'` 客户端组件
+// - 运行时兜底：新装、尚未重启的模板走 esbuild 编译，仅支持服务端 JSX
+// 交互区块（评论表单、灯箱等）仍由宿主以 ReactNode 插槽 props.slots 传入，
+// 主题可直接复用，也可用客户端组件自行实现。
 import 'server-only';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ComponentType, ReactNode } from 'react';
 import { getActiveTheme } from '../theme';
-import { themeTemplateRegistry } from './generated-templates';
+import { pluginTemplateRegistry, themeTemplateRegistry } from './generated-templates';
 
 // ── 通用数据结构（主题作者可见） ────────────────────────────────
 
@@ -374,7 +375,7 @@ export async function loadTsxModule(
 
 /**
  * 解析主题 templates 目录下的模板（相对路径，如 plugins/foo/bar.tsx）。
- * 不直接 import .tsx，统一走运行时编译；路径越界返回 null。
+ * 优先查构建期注册表（支持 @/ 与 'use client'），否则走运行时编译；路径越界返回 null。
  */
 export async function resolveThemeTemplate(
   relPath: string,
@@ -383,11 +384,41 @@ export async function resolveThemeTemplate(
   const theme = await getActiveTheme();
   if (!theme) return null;
 
+  const key = relPath.split(path.sep).join('/').replace(/^\.\//, '').replace(/\.tsx$/, '');
+  const registered = themeTemplateRegistry[theme.slug]?.[key];
+  if (registered && typeof registered === 'object') {
+    return registered as Record<string, unknown>;
+  }
+
   const root = path.resolve(process.cwd(), 'scripts', 'themes', theme.slug, 'templates');
   const absPath = path.resolve(root, relPath);
   if (!absPath.startsWith(root + path.sep)) return null;
 
   return loadTsxModule(absPath, `theme-${theme.slug}-${cacheName}`);
+}
+
+/**
+ * 解析插件自带模板：优先构建期注册表，回退运行时编译。
+ * 主题覆盖请在调用前先用 resolveThemeTemplate('plugins/<slug>/<name>.tsx') 尝试。
+ */
+export async function resolvePluginSourceTemplate(
+  pluginSlug: string,
+  templateName: string
+): Promise<Record<string, unknown> | null> {
+  const registered = pluginTemplateRegistry[pluginSlug]?.[templateName];
+  if (registered && typeof registered === 'object') {
+    return registered as Record<string, unknown>;
+  }
+
+  const absPath = path.join(
+    process.cwd(),
+    'scripts',
+    'plugins',
+    pluginSlug,
+    'templates',
+    `${templateName}.tsx`
+  );
+  return loadTsxModule(absPath, `plugin-src-${pluginSlug}-${templateName}`);
 }
 
 const TEMPLATE_NAME_RE = /^[a-z][a-z0-9-]*$/;

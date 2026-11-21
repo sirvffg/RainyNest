@@ -22,10 +22,22 @@ export async function GET(req: NextRequest) {
   const size = Math.min(100, Math.max(1, parseInt(sp.get('size') || '10', 10) || 10));
 
   // 未登录只能看已发布；登录后可按 status 筛选（含草稿）
-  return listPosts({ keyword, status: session ? status : 'PUBLISHED', page, size });
+  return listPosts({
+    keyword,
+    status: session ? status : 'PUBLISHED',
+    page,
+    size,
+    permissions: session?.user?.permissions,
+  });
 }
 
-async function listPosts(opts: { keyword: string; status: string; page: number; size: number }) {
+async function listPosts(opts: {
+  keyword: string;
+  status: string;
+  page: number;
+  size: number;
+  permissions?: string[];
+}) {
   const where: Prisma.PostWhereInput = {};
   if (opts.status && opts.status !== 'ALL') where.status = opts.status;
   if (opts.keyword) {
@@ -57,8 +69,8 @@ async function listPosts(opts: { keyword: string; status: string; page: number; 
   let rows: unknown[] = list;
   try {
     const { collectPostOperations, collectListFields, renderListFieldValues } = await import('@/lib/plugin/ui');
-    operations = await collectPostOperations();
-    const defs = await collectListFields('postListItemField');
+    operations = await collectPostOperations(opts.permissions);
+    const defs = await collectListFields('postListItemField', opts.permissions);
     fields = defs.map(({ key, label, width, sortable }) => ({ key, label, width, sortable }));
     if (defs.length > 0) {
       rows = await Promise.all(

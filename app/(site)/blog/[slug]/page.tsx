@@ -7,7 +7,8 @@ import { MessageSquareOff } from 'lucide-react';
 import { db } from '@/lib/prisma';
 import { getSiteSetting } from '@/lib/site';
 import { firstWins } from '@/lib/plugin/engine';
-import { collectPostContentHtml, getCommentWidgetHtml, collectCommentFields } from '@/lib/plugin/ui';
+import { collectPostContentHtml, getCommentWidgetHtml, collectCommentFields, getCommentEditorComponent, getCommentContentRenderer, renderPluginComponentHtml } from '@/lib/plugin/ui';
+import type { CommentContentProps } from '@/lib/plugin/ui';
 import { renderMarkdown } from '@/lib/markdown/processor';
 import { resolveSystemTemplate, type PostDetailTemplateProps, type PostDetailTemplate as PostDetailTemplateComp } from '@/lib/theme/templates';
 import PostDetailTemplate from '@/components/site/blog/PostDetailTemplate';
@@ -88,6 +89,34 @@ async function getCommentTree(postId: string): Promise<CommentNode[]> {
   return roots;
 }
 
+// 插件评论内容渲染：逐条预渲染为 HTML 挂到节点上，单条失败只回退该条原内容
+async function attachCommentContentHtml(
+  nodes: CommentNode[],
+  renderer: NonNullable<Awaited<ReturnType<typeof getCommentContentRenderer>>>
+): Promise<void> {
+  const flat: CommentNode[] = [];
+  const walk = (list: CommentNode[]) => {
+    for (const node of list) {
+      flat.push(node);
+      walk(node.replies);
+    }
+  };
+  walk(nodes);
+
+  await Promise.all(
+    flat.map(async (node) => {
+      try {
+        const html = await renderPluginComponentHtml(renderer, {
+          comment: node as unknown as CommentContentProps['comment'],
+        });
+        if (html) node.contentHtml = html;
+      } catch (err) {
+        console.error(`[Plugin] commentListItemContentReplace 渲染评论 ${node.id} 失败，回退原内容:`, err);
+      }
+    })
+  );
+}
+
 export default async function BlogPostPage({ params }: Props) {
   const { slug } = await params;
 
@@ -117,17 +146,40 @@ export default async function BlogPostPage({ params }: Props) {
     comments = await getCommentTree(post.id);
   } catch { /* 数据库未就绪 */ }
 
-  // 插件扩展点：文末追加块 + 第三方评论替换 + 评论表单字段
+  // 插件扩展点：文末追加块 + 第三方评论替换 + 评论表单字段 + 评论编辑器/内容渲染替换
   let postContentBlocks: string[] = [];
   let commentWidgetHtml: string | null = null;
   let commentFields: Awaited<ReturnType<typeof collectCommentFields>> = [];
+  let commentEditor: Awaited<ReturnType<typeof getCommentEditorComponent>> = null;
+  let commentContentRenderer: Awaited<ReturnType<typeof getCommentContentRenderer>> = null;
   try {
-    [postContentBlocks, commentWidgetHtml, commentFields] = await Promise.all([
-      collectPostContentHtml(),
-      getCommentWidgetHtml(),
-      collectCommentFields(),
-    ]);
+    [postContentBlocks, commentWidgetHtml, commentFields, commentEditor, commentContentRenderer] =
+      await Promise.all([
+        collectPostContentHtml(),
+        getCommentWidgetHtml(),
+        collectCommentFields(),
+        getCommentEditorComponent(),
+        getCommentContentRenderer(),
+      ]);
   } catch { /* 插件系统未就绪 */ }
+
+  // 插件评论编辑器：服务端预渲染为 HTML，渲染抛错时回退内置 CommentForm（不整页 500）
+  let commentEditorHtml: string | null = null;
+  if (commentEditor) {
+    try {
+      commentEditorHtml = await renderPluginComponentHtml(commentEditor, {
+        postId: post.id,
+        fields: commentFields,
+      });
+    } catch (err) {
+      console.error('[Plugin] commentEditorReplace 渲染失败，回退内置评论表单:', err);
+    }
+  }
+
+  // 插件评论内容渲染：为每条评论（含回复）预渲染 HTML
+  if (commentContentRenderer && comments.length > 0) {
+    await attachCommentContentHtml(comments, commentContentRenderer);
+  }
 
   // JSON-LD（BlogPosting）
   const jsonLd = {
@@ -173,7 +225,11 @@ export default async function BlogPostPage({ params }: Props) {
       ) : (
         <div className="space-y-6">
           {post.allowComment ? (
-            <CommentForm postId={post.id} fields={commentFields} />
+            commentEditorHtml !== null ? (
+              <div className="anim-fade-in" dangerouslySetInnerHTML={{ __html: commentEditorHtml }} />
+            ) : (
+              <CommentForm postId={post.id} fields={commentFields} />
+            )
           ) : (
             <p className="flex items-center gap-1.5 text-sm text-fg-muted anim-fade-in">
               <MessageSquareOff className="w-4 h-4" />

@@ -3,7 +3,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { revalidatePath } from 'next/cache';
-import { requirePermission } from '@/lib/api-auth';
+import { requirePermission, requireSession } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
@@ -11,6 +11,8 @@ export const runtime = 'nodejs';
 export async function GET(req: NextRequest) {
   const check = await requirePermission('console:access');
   if (check) return check;
+  const session = await requireSession();
+  const permissions = session?.user?.permissions;
 
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
@@ -38,14 +40,14 @@ export async function GET(req: NextRequest) {
       }),
       db.attachment.count({ where }),
     ]);
-    // 插件扩展点：附件选择器 Tab / 行操作
+    // 插件扩展点：附件选择器 Tab / 行操作（按当前用户权限过滤）
     let tabs: unknown[] = [];
     let operations: unknown[] = [];
     try {
       const { collectTabs, collectListOperations } = await import('@/lib/plugin/ui');
       [tabs, operations] = await Promise.all([
-        collectTabs('attachmentSelectorTab'),
-        collectListOperations('attachmentListItemOperation'),
+        collectTabs('attachmentSelectorTab', permissions),
+        collectListOperations('attachmentListItemOperation', permissions),
       ]);
     } catch { /* 插件系统未就绪 */ }
 

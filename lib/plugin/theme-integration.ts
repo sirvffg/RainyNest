@@ -1,9 +1,8 @@
 // lib/plugin/theme-integration.ts — Halo 风格"主题优先"插件模板解析
 // 主题可以覆盖插件模板：scripts/themes/{slug}/templates/plugins/{pluginSlug}/{name}.tsx
-// TSX 统一走 lib/theme/templates.ts 的 esbuild 运行时编译，不直接 import .tsx
-import fs from 'node:fs';
+// 已安装模板优先走构建期注册表（支持 @/ 与 'use client'），未重启时回退运行时编译。
 import path from 'node:path';
-import { loadTsxModule, resolveThemeTemplate } from '../theme/templates';
+import { resolvePluginSourceTemplate, resolveThemeTemplate } from '../theme/templates';
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -25,21 +24,11 @@ export async function resolvePluginTemplate(
     console.error(`[Theme] 插件模板覆盖加载失败，回退插件默认模板: ${pluginSlug}/${templateName}`, err);
   }
 
-  // 2. 回退：用插件自带的默认模板
-  const pluginTemplatePath = path.join(
-    process.cwd(),
-    'scripts',
-    'plugins',
-    pluginSlug,
-    'templates',
-    `${templateName}.tsx`
-  );
-  if (fs.existsSync(pluginTemplatePath)) {
-    try {
-      return await loadTsxModule(pluginTemplatePath, `plugin-src-${pluginSlug}-${templateName}`);
-    } catch (err) {
-      console.error(`[Plugin] 默认模板加载失败: ${pluginSlug}/${templateName}`, err);
-    }
+  // 2. 回退：插件自带的默认模板
+  try {
+    return await resolvePluginSourceTemplate(pluginSlug, templateName);
+  } catch (err) {
+    console.error(`[Plugin] 默认模板加载失败: ${pluginSlug}/${templateName}`, err);
   }
 
   return null; // 都没有 → 显示"插件模板缺失"

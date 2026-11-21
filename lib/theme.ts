@@ -31,6 +31,15 @@ export interface ActiveTheme extends ThemeMeta {
   customJs?: string;
 }
 
+// 预览图路径规范化：theme.json 里常写 "preview.png" 相对路径，
+// 后台直接放进 <img src> 会以当前页面为基准导致 404，这里统一转为 /themes/<slug>/xxx
+function normalizePreview(meta: ThemeMeta, dirSlug: string): ThemeMeta {
+  const raw = typeof meta.preview === 'string' ? meta.preview.trim() : '';
+  if (!raw) return meta;
+  if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('/')) return meta;
+  return { ...meta, preview: `/themes/${dirSlug}/${raw.replace(/^\.?\//, '')}` };
+}
+
 // 扫描所有已安装主题
 export async function scanInstalledThemes(): Promise<ThemeMeta[]> {
   if (!fs.existsSync(THEMES_DIR)) return [];
@@ -41,7 +50,7 @@ export async function scanInstalledThemes(): Promise<ThemeMeta[]> {
     const jsonPath = path.join(THEMES_DIR, dir, 'theme.json');
     if (!fs.existsSync(jsonPath)) continue;
     try {
-      themes.push(JSON.parse(fs.readFileSync(jsonPath, 'utf-8')));
+      themes.push(normalizePreview(JSON.parse(fs.readFileSync(jsonPath, 'utf-8')), dir));
     } catch (err) {
       console.error(`[Theme] ${dir}: theme.json 解析失败`, err);
     }
@@ -70,7 +79,8 @@ function loadThemeBySlugSync(slug: string, dbTheme: { id: string; config: string
   // 1. 读取 theme.json 元数据（目录不存在视为未安装）
   const jsonPath = path.join(THEMES_DIR, slug, 'theme.json');
   if (!fs.existsSync(jsonPath)) return null;
-  const meta: ThemeMeta = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+  const rawMeta: ThemeMeta = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+  const meta = normalizePreview(rawMeta, slug);
 
   // 2. 加载 theme.js 的 configToCssVariables
   let configToVars: (config: Record<string, any>) => Record<string, string> = () => ({});
