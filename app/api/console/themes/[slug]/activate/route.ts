@@ -3,7 +3,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { requirePermission } from '@/lib/api-auth';
 import { db } from '@/lib/prisma';
-import { clearThemeCache, scanInstalledThemes } from '@/lib/theme';
+import { clearThemeCache, scanInstalledThemes, isThemeCompatible } from '@/lib/theme';
 import type { ThemeMeta } from '@/lib/theme';
 
 export const runtime = 'nodejs';
@@ -21,6 +21,12 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
   const meta = metas.find((m) => m.slug === slug);
   if (!meta) {
     return NextResponse.json({ error: '主题不存在或 theme.json 缺失' }, { status: 404 });
+  }
+  if (!isThemeCompatible(meta)) {
+    return NextResponse.json(
+      { error: `主题要求核心版本 ${meta.minRainyNestVersion ?? '*'} ~ ${meta.maxRainyNestVersion ?? '*'}，与当前核心版本不兼容` },
+      { status: 400 }
+    );
   }
 
   try {

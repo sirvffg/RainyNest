@@ -63,6 +63,11 @@ export default function myPlugin(ctx: PluginContext): ExtensionHandlers {
 
 插件加载时由引擎构造，包含所有可用资源。
 
+> ⚠️ **信任模型**：插件与宿主运行在同一 Node 进程内，拥有宿主级代码执行权限（db、env、文件系统均可达）。
+> 权限声明仅用于控制台展示与扩展点过滤，**无法**限制同进程代码的实际行为。安装第三方插件前应审查其来源与代码；
+> 真正的不可信插件隔离需要独立进程 / 容器级安全边界。声明了 `critical: true` 的 `apiMiddleware` 失败时会拒绝请求（503），
+> 普通 `apiMiddleware` 失败仅记录日志并放行。
+
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `ctx.db` | `HostPrismaClient` | **主数据库**（Prisma 客户端），包含 Post、Category、Tag、Comment、Page 等全部业务表 |
@@ -75,7 +80,19 @@ export default function myPlugin(ctx: PluginContext): ExtensionHandlers {
 | `ctx.version` | `string` | 插件自身版本号 |
 | `ctx.env` | `Record<string, string \| undefined>` | `process.env` 环境变量 |
 | `ctx.logger` | `PluginLogger` | 日志工具（带统一前缀 `[Plugin:<slug>]`） |
-| `ctx.emitEvent` | `(name: string, data: unknown) => void` | 进程内事件总线（发布-订阅） |
+| `ctx.emitEvent` | `(name: string, data: unknown) => void` | 进程内事件总线（发布） |
+| `ctx.events` | `PluginEventBus`（0.3.3 起） | 订阅事件：`on / once / off`；插件卸载或重载时监听器自动清理 |
+
+**事件总线用法**（事件名用命名空间风格如 `post.created`，插件自定义事件建议加 `<slug>.` 前缀）：
+
+```ts
+export default function (ctx) {
+  const off = ctx.events.on('post.created', (data) => { /* ... */ });  // 返回取消订阅函数
+  ctx.events.once('post.created', handler);                            // 一次性订阅
+  ctx.events.off('post.created', handler);                             // 取消订阅（省略 handler 移除本插件对该事件的全部监听）
+  ctx.emitEvent('post.created', post);                                 // 发布（同步派发，异步 handler 的拒绝只记日志）
+}
+```
 
 #### PluginDatabase — 插件独立 SQLite
 
@@ -332,6 +349,7 @@ scripts/themes/<slug>/
   "author": "RainyNest Team",
   "preview": "/themes/default/preview.png",
   "minRainyNestVersion": "1.0.0",
+  "maxRainyNestVersion": "2.0.0",
   "supports": ["dark-mode", "custom-css"],
   "configSchema": {
     "colors": {
@@ -399,7 +417,8 @@ interface ThemeMeta {
   description?: string;
   author?: string;
   preview?: string;
-  minRainyNestVersion?: string;
+  minRainyNestVersion?: string;       // 最低核心版本（不满足则主题不可加载、不可激活）
+  maxRainyNestVersion?: string;       // 最高核心版本（含），超出同样不可加载
   supports: string[];
   configSchema: Record<string, any>;
 }

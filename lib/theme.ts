@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { db } from './prisma';
+import { compareSemver, satisfiesCoreVersion, getCoreVersion } from './plugin/semver';
 
 // 安装目录（内置预装与后台上传共用）：theme.json 与 theme.js 同目录
 const THEMES_DIR = path.join(process.cwd(), 'scripts', 'themes');
@@ -19,6 +20,8 @@ export interface ThemeMeta {
   author?: string;
   preview?: string;
   minRainyNestVersion?: string;
+  /** 允许的最高核心版本（含），如 "2.0.0" */
+  maxRainyNestVersion?: string;
   supports: string[];
   configSchema: Record<string, any>;
 }
@@ -38,6 +41,18 @@ function normalizePreview(meta: ThemeMeta, dirSlug: string): ThemeMeta {
   if (!raw) return meta;
   if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('/')) return meta;
   return { ...meta, preview: `/themes/${dirSlug}/${raw.replace(/^\.?\//, '')}` };
+}
+
+// 核心版本兼容性检查（theme.json 的 min/max RainyNestVersion；空视为不限制）
+export function isThemeCompatible(meta: ThemeMeta): boolean {
+  const coreVersion = getCoreVersion();
+  if (meta.minRainyNestVersion && !satisfiesCoreVersion(coreVersion, meta.minRainyNestVersion)) {
+    return false;
+  }
+  if (meta.maxRainyNestVersion && compareSemver(coreVersion, meta.maxRainyNestVersion) > 0) {
+    return false;
+  }
+  return true;
 }
 
 // 扫描所有已安装主题
@@ -81,6 +96,14 @@ function loadThemeBySlugSync(slug: string, dbTheme: { id: string; config: string
   if (!fs.existsSync(jsonPath)) return null;
   const rawMeta: ThemeMeta = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
   const meta = normalizePreview(rawMeta, slug);
+
+  // 1.5 核心版本兼容性：不满足 min/max RainyNestVersion 的主题不可加载
+  if (!isThemeCompatible(meta)) {
+    console.warn(
+      `[Theme] ${slug} 已跳过：要求核心版本 ${meta.minRainyNestVersion ?? '*'} ~ ${meta.maxRainyNestVersion ?? '*'}，当前核心版本 ${getCoreVersion()}`
+    );
+    return null;
+  }
 
   // 2. 加载 theme.js 的 configToCssVariables
   let configToVars: (config: Record<string, any>) => Record<string, string> = () => ({});

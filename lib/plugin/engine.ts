@@ -38,12 +38,63 @@ function createPluginLogger(slug: string): PluginLogger {
   };
 }
 
-// 事件总线（进程内，简单实现）
-const eventHandlers = new Map<string, ((data: unknown) => void)[]>();
-function emitEvent(name: string, data: unknown) {
-  for (const fn of eventHandlers.get(name) || []) {
-    try { fn(data); } catch { /* ignore */ }
+// 事件总线（进程内）：插件通过 ctx.events.on/once/off 订阅，宿主与插件通过 emitEvent 发布
+// 每条监听记录来源插件 slug，插件卸载/重载时自动清理其全部监听
+interface EventListenerEntry {
+  name: string;
+  fn: (data: unknown) => void;
+  once: boolean;
+  pluginSlug: string | null;
+}
+const eventListeners: EventListenerEntry[] = [];
+
+function removeEventListenerEntry(entry: EventListenerEntry) {
+  const i = eventListeners.indexOf(entry);
+  if (i >= 0) eventListeners.splice(i, 1);
+}
+
+function removePluginEventListeners(pluginSlug: string) {
+  for (let i = eventListeners.length - 1; i >= 0; i--) {
+    if (eventListeners[i].pluginSlug === pluginSlug) eventListeners.splice(i, 1);
   }
+}
+
+function emitEvent(name: string, data: unknown) {
+  // 快照遍历：handler 内的 on/off 不影响本轮派发
+  for (const entry of [...eventListeners]) {
+    if (entry.name !== name) continue;
+    if (entry.once) removeEventListenerEntry(entry);
+    try {
+      const out = entry.fn(data) as unknown;
+      // 异步 handler：拒绝只记日志，不影响其他监听
+      if (out instanceof Promise) {
+        out.catch((err) => console.error(`[Plugin:events] async handler failed for "${name}":`, err));
+      }
+    } catch (err) {
+      console.error(`[Plugin:events] handler failed for "${name}":`, err);
+    }
+  }
+}
+
+// 为单个插件生成事件订阅 API（off/清理都限定在该插件名下）
+function createPluginEventApi(pluginSlug: string): import('./types').PluginContext['events'] {
+  const subscribe = (name: string, fn: (data: unknown) => void, once: boolean) => {
+    const entry: EventListenerEntry = { name, fn, once, pluginSlug };
+    eventListeners.push(entry);
+    return () => removeEventListenerEntry(entry);
+  };
+  return {
+    on: (name, fn) => subscribe(name, fn, false),
+    once: (name, fn) => subscribe(name, fn, true),
+    off: (name, fn) => {
+      for (let i = eventListeners.length - 1; i >= 0; i--) {
+        const e = eventListeners[i];
+        if (e.name === name && e.pluginSlug === pluginSlug && (!fn || e.fn === fn)) {
+          eventListeners.splice(i, 1);
+        }
+      }
+    },
+  };
 }
 
 // 懒加载插件库：只有插件真正访问 ctx.pluginDb 时才打开 SQLite 文件
@@ -59,10 +110,13 @@ function lazyPluginDb(slug: string): unknown {
   });
 }
 
-// 扫描 + 加载所有插件（启动时调用一次）
+// 扫描 + 加载所有插件
+// 状态机：idle（__rnPlugins 为 null）→ loading（__rnPluginBooting）→ loaded（__rnPlugins 已就绪）
+// 已加载后重复调用直接返回（幂等）；resetPluginCache / reloadPlugin 回到 idle 触发重新扫描
 export async function bootPlugins(): Promise<void> {
-  if (g.__rnPluginBooting) return g.__rnPluginBooting;
-  g.__rnPluginBooting = (async () => {
+  if (g.__rnPlugins) return;                      // loaded：已完成初始化，不重复扫描
+  if (g.__rnPluginBooting) return g.__rnPluginBooting; // loading：并发调用等待同一个 Promise
+  const booting = (async () => {
     const plugins: LoadedPlugin[] = [];
 
     if (fs.existsSync(PLUGINS_DIR)) {
@@ -127,6 +181,7 @@ export async function bootPlugins(): Promise<void> {
             env: process.env,
             logger: createPluginLogger(dir),
             emitEvent,
+            events: createPluginEventApi(dir),
           } as unknown as PluginContext;
 
           const handlers: ExtensionHandlers =
@@ -169,6 +224,7 @@ export async function bootPlugins(): Promise<void> {
             env: process.env,
             logger: createPluginLogger(p.slug),
             emitEvent,
+            events: createPluginEventApi(p.slug),
           } as unknown as PluginContext;
           await p.handlers.onMount(mountCtx);
         } catch (err) {
@@ -177,28 +233,37 @@ export async function bootPlugins(): Promise<void> {
       }
     }
 
-    if (plugins.length > 0) {
-      console.log(`[Plugin] ✓ Loaded ${plugins.length} plugin(s): ${plugins.map((p) => p.slug).join(', ')}`);
-    }
+      if (plugins.length > 0) {
+        console.log(`[Plugin] ✓ Loaded ${plugins.length} plugin(s): ${plugins.map((p) => p.slug).join(', ')}`);
+      }
   })();
 
-  try {
-    await g.__rnPluginBooting;
-  } finally {
+  // finally 只清 loading 标记；loaded 状态由 g.__rnPlugins 是否就绪决定（加载失败保持 idle 可重试）
+  g.__rnPluginBooting = booting;
+  return booting.finally(() => {
     g.__rnPluginBooting = null;
-  }
+  });
 }
 
-// 开发模式热重载：清除指定插件的 require 缓存并重置扩展注册表
+// 开发模式热重载：重置扩展注册表（回到 idle，下次访问扩展点时重新扫描）
 export function resetPluginCache() {
   g.__rnPlugins = null;
 }
 
+// 单插件热重载：清除该插件 require 缓存 + 清理其事件监听 + 重置注册表
+// 注意：这是「重新扫描全部插件」的单插件入口；宿主整体重载用 reloadAllPlugins()
 export function reloadPlugin(slug: string) {
   const dir = path.join(PLUGINS_DIR, slug);
   for (const key of Object.keys(nodeRequire.cache)) {
     if (key === dir || key.startsWith(dir + path.sep)) delete nodeRequire.cache[key];
   }
+  removePluginEventListeners(slug);
+  resetPluginCache();
+}
+
+// 全量重载：清理所有事件监听 + 重置注册表（重新扫描全部插件）
+export function reloadAllPlugins() {
+  eventListeners.length = 0;
   resetPluginCache();
 }
 
@@ -303,11 +368,14 @@ export async function getApiMiddlewares(): Promise<ResolvedApiMiddleware[]> {
 }
 
 // 执行 API 过滤器链；返回 Response 表示拦截，返回 null 表示放行
+// 失败语义：普通中间件抛错/超时 → 记录日志继续链；critical 中间件失败 → 503 默认拒绝
 export async function runApiMiddlewares(req: Request): Promise<Response | null> {
   let middlewares: ResolvedApiMiddleware[] = [];
   try {
     middlewares = await getApiMiddlewares();
-  } catch {
+  } catch (err) {
+    // 引擎级失败（插件加载异常）：无法判断是否存在 critical 中间件，记录日志后放行
+    console.error('[Plugin] apiMiddlewares 加载失败，跳过中间件链:', err);
     return null;
   }
   if (middlewares.length === 0) return null;
@@ -320,13 +388,52 @@ export async function runApiMiddlewares(req: Request): Promise<Response | null> 
   });
   if (matched.length === 0) return null;
 
+  const criticalFailed = (): Response =>
+    new Response(JSON.stringify({ error: '插件安全策略中间件执行失败，请求被拒绝' }), {
+      status: 503,
+      headers: { 'content-type': 'application/json' },
+    });
+
   let index = 0;
   const next = async (): Promise<Response> => {
     if (index >= matched.length) return new Response(null, { status: 204 });
     const mw = matched[index++];
-    const out = await mw.handler(req, next);
-    return out instanceof Response ? out : next();
+
+    // 严格单次 next()：重复调用抛错；handler 调用了 next() 但丢弃返回值时复用链上结果
+    let nextCalled = false;
+    let chainResult: Promise<Response> | null = null;
+    const nextOnce = async (): Promise<Response> => {
+      if (nextCalled) throw new Error(`[Plugin] ${mw.pluginSlug} apiMiddleware 多次调用 next()`);
+      nextCalled = true;
+      chainResult = next();
+      return chainResult;
+    };
+
+    // 超时保护：def.timeout 可覆盖，默认 10s
+    const timeoutMs = mw.timeout ?? 10_000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`[Plugin] ${mw.pluginSlug} apiMiddleware 超时(${timeoutMs}ms)`)), timeoutMs);
+    });
+
+    try {
+      const out = await Promise.race([
+        Promise.resolve(mw.handler(req, nextOnce)),
+        timeoutPromise,
+      ]);
+      if (out instanceof Response) return out;
+      if (chainResult) return await chainResult; // handler 调了 next() 但返回 void
+      return await nextOnce();                    // handler 什么都没做 → 继续链
+    } catch (err) {
+      console.error(`[Plugin] ${mw.pluginSlug} apiMiddleware${mw.critical ? '(critical)' : ''} failed:`, err);
+      if (mw.critical) return criticalFailed();   // 安全策略中间件：默认拒绝
+      if (chainResult) return await chainResult;  // 普通中间件：继续已启动的链
+      return await nextOnce();
+    } finally {
+      clearTimeout(timer);
+    }
   };
+
   const result = await next();
   // 204 是链尾占位，视为放行
   return result.status === 204 ? null : result;

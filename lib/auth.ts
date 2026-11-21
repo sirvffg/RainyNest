@@ -290,6 +290,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth(async () => {
           token.roles = authUser.roles;
           token.permissions = authUser.permissions;
           token.forbidConsole = authUser.forbidConsole;
+          token.permSyncedAt = Date.now();
 
           // ⭐ 仅登录时写一次 Session 表，后续请求不再写库
           try {
@@ -302,6 +303,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth(async () => {
             token.sessionToken = created.token;
           } catch {
             /* 会话记录失败不影响登录 */
+          }
+        } else if (token.sub) {
+          // 权限快照自愈：非登录请求每 60s 从 DB 刷新一次角色/权限（角色变更无需重新登录）
+          // Edge middleware（/console 页面网关）仍用快照判定；API 路由的 requirePermission 走这里刷新
+          const PERM_REFRESH_TTL = 60_000;
+          const last = typeof token.permSyncedAt === 'number' ? token.permSyncedAt : 0;
+          if (Date.now() - last > PERM_REFRESH_TTL) {
+            try {
+              const fresh = await findUserWithRoles({ id: token.sub });
+              if (fresh && fresh.status === 'ENABLED') {
+                const au = toAuthUser(fresh);
+                token.username = au.username;
+                token.roles = au.roles;
+                token.permissions = au.permissions;
+                token.forbidConsole = au.forbidConsole;
+              }
+              token.permSyncedAt = Date.now();
+            } catch {
+              /* DB 暂不可用时沿用旧快照，下个请求再试 */
+            }
           }
         }
         return token;

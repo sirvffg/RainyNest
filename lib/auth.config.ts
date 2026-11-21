@@ -32,6 +32,8 @@ declare module '@auth/core/jwt' {
     forbidConsole?: boolean;
     /** 当前设备的会话 token（登录成功时写入一次） */
     sessionToken?: string;
+    /** 权限快照上次从 DB 刷新的时间戳（服务端 jwt 回调定期自愈刷新） */
+    permSyncedAt?: number;
   }
 }
 
