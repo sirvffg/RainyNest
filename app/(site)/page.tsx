@@ -4,6 +4,11 @@ import { BookOpen, ArrowRight, PenLine } from 'lucide-react';
 import { db } from '@/lib/prisma';
 import { getSiteSetting } from '@/lib/site';
 import PostCard, { type PostCardData } from '@/components/post/PostCard';
+import {
+  resolveSystemTemplate,
+  type HomeTemplateProps,
+  type TemplateSite,
+} from '@/lib/theme/templates';
 
 export const revalidate = 300;
 
@@ -25,6 +30,49 @@ export default async function HomePage() {
     posts = list;
     total = count;
   } catch { /* 数据库未就绪 */ }
+
+  const postsArea =
+    posts.length === 0 ? (
+      <div className="rounded-lg border border-dashed border-line p-12 text-center anim-fade-in">
+        <p className="text-fg-muted">还没有文章 去后台写下第一篇吧</p>
+        <Link
+          href="/console/posts/new"
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded bg-primary text-white text-sm transition-all duration-200 hover:bg-primary-hover active:scale-95"
+        >
+          <PenLine className="w-4 h-4" />
+          写文章
+        </Link>
+      </div>
+    ) : (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
+        {posts.map((post, i) => (
+          <PostCard key={post.id} post={post} index={i} />
+        ))}
+      </div>
+    );
+
+  const templateSite: TemplateSite = {
+    title: site.title,
+    subtitle: site.subtitle ?? null,
+    description: site.description ?? null,
+    logo: site.logo ?? null,
+    url: site.url ?? null,
+    footerText: site.footerText ?? null,
+    icp: site.icp ?? null,
+  };
+
+  // 主题覆盖首页：templates/home.tsx
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<HomeTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<HomeTemplateProps>('home');
+  } catch (err) {
+    console.error('[Theme] home 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return <Template site={templateSite} posts={posts} total={total} slots={{ posts: postsArea }} />;
+  }
 
   return (
     <div className="space-y-12">
@@ -63,24 +111,7 @@ export default async function HomePage() {
           )}
         </div>
 
-        {posts.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-line p-12 text-center anim-fade-in">
-            <p className="text-fg-muted">还没有文章 去后台写下第一篇吧</p>
-            <Link
-              href="/console/posts/new"
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded bg-primary text-white text-sm transition-all duration-200 hover:bg-primary-hover active:scale-95"
-            >
-              <PenLine className="w-4 h-4" />
-              写文章
-            </Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
-            {posts.map((post, i) => (
-              <PostCard key={post.id} post={post} index={i} />
-            ))}
-          </div>
-        )}
+        {postsArea}
       </section>
     </div>
   );

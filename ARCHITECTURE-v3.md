@@ -46,7 +46,7 @@
 | 定时       | node-cron                            | 进程内调度（`instrumentation.ts`）         |
 | 校验       | Zod                                  | API 入参与设置校验                         |
 | 图标       | lucide-react                         | 前后台通用                               |
-| 扩展类型     | `@rainynest/plugin-types@0.3.1`      | 纯类型包，devDependency                  |
+| 扩展类型     | `@rainynest/plugin-types@0.3.2`      | 纯类型包，devDependency                  |
 
 ***
 
@@ -270,7 +270,7 @@ API 的鉴权在各 Route Handler 内用 `requireSession` / `requirePermission` 
 
 ### 7.1 类型契约
 
-- npm 包：`@rainynest/plugin-types@0.3.1`（纯类型，devDependency）
+- npm 包：`@rainynest/plugin-types@0.3.2`（纯类型，devDependency）
 - 源码：`RainyNest_Dev/packages/types`
 - 宿主出口：`lib/plugin/types.ts` 只做 `export type * from '@rainynest/plugin-types'`
 - 扩展点增减流程：改 Dev 包 → 升版本 → 构建 → 发布 npm → 主项目升级依赖。宿主不再维护本地类型副本。
@@ -285,7 +285,7 @@ scripts/plugins/<slug>/
 
 - 安装器：`lib/ext-installer.ts`
 - 上传包命名：`{slug}.zip.rainy-plugin`、`{slug}.gz.rainy-plugin`、`{slug}.zip.rainy-theme`、`{slug}.gz.rainy-theme`
-- 限制：单包 ≤ 20MB；仅允许 `.js/.json/.css/.png/.jpg/.jpeg/.svg/.webp/.sql/.md/.txt/.woff/.woff2/.ttf`；解压时校验路径穿越
+- 限制：单包 ≤ 20MB；仅允许 `.js/.tsx/.json/.css/.png/.jpg/.jpeg/.svg/.webp/.sql/.md/.txt/.woff/.woff2/.ttf`；解压时校验路径穿越
 - 卸载采用「重命名 + 延迟删除」，`ensure-extensions.js` 启动时清扫 `.bak-*` / `.deleted-*`
 - 插件静态/模板文件与 `index.js` 同目录，跟随插件整体安装卸载
 
@@ -382,7 +382,7 @@ scripts/themes/<slug>/
 ├─ theme.json     元数据 + configSchema
 ├─ theme.js       可选：configToCssVariables(config)
 ├─ theme.css      可选：静态样式
-└─ templates/     可选：覆盖系统页面模板
+└─ templates/     可选：覆盖系统页面模板 layout/home/post-list/post/page/archive/categories/category/tags/tag/search/moments/moment/links/gallery/photo/error
 ```
 
 `theme.json` 关键字段：
@@ -408,20 +408,40 @@ scripts/themes/<slug>/
 
 前台布局把 `cssVars` 注入根元素，主题样式全部基于 CSS 变量，切换主题不需要重新生成 Tailwind 类。
 
-### 8.3 模板覆盖
+### 8.3 模板覆盖（Halo 级）
 
-| 覆盖对象   | 路径                                                                  | 解析                                               |
-| ------ | ------------------------------------------------------------------- | ------------------------------------------------ |
-| 系统页面模板 | `scripts/themes/<active>/templates/<name>.tsx`                      | `lib/theme/templates.ts` 运行时 esbuild 编译；失败回退内置模板 |
-| 插件模板   | `scripts/themes/<active>/templates/plugins/<pluginSlug>/<name>.tsx` | `lib/plugin/theme-integration.ts`                |
+主题可在 `templates/` 下按页面放置模板，存在即覆盖系统内置渲染，解析由 `lib/theme/templates.ts` 完成（esbuild 运行时编译为 CJS，mtime 缓存；失败回退内置模板）。
 
-模板是纯服务端 JSX：不能 import `@/` 别名与 `'use client'` 组件；交互区块由宿主以 `props.slots` 传入（目录、评论表单等），主题只决定摆放位置。
+| 模板名 | 对应页面 | 主要 Props / 插槽 |
+|--------|----------|------------------|
+| `layout` | 整体壳 | `site`、`menus`、`header`、`sidebar`、`footer`、`footerNodes`、`children` |
+| `home` | 首页 | `site`、`posts`、`total`、`slots.posts` |
+| `post-list` | 博客列表 | `posts`、`page`、`totalPages`、`slots.list`、`slots.pagination` |
+| `post` | 文章详情（`post-detail` 兼容） | `post`、`html`、`commentsCount`、`slots.tocMobile/tocDesktop/comments/contentBlocks` |
+| `page` | 独立页面 | `page`、`slots.contentBlocks` |
+| `archive` | 归档 | `total`、`years[]` |
+| `categories` / `category` | 分类列表 / 详情 | `categories[]`；`category`、`posts`、`slots.list` |
+| `tags` / `tag` | 标签列表 / 详情 | `tags[]`；`tag`、`posts`、`slots.list` |
+| `search` | 搜索 | `query`、`results[]`、`slots.form` |
+| `moments` / `moment` | 说说列表 / 详情 | `moments[]`、`slots.list`；`moment`、`prev`、`next`、`slots.lightbox` |
+| `links` | 友链 | `links[]`、`slots.list` |
+| `gallery` / `photo` | 相册列表 / 详情 | `galleries[]`、`slots.list`；`gallery`、`photos[]`、`slots.grid` |
+| `error` | 404 | `status`、`title`、`message` |
+
+插件模板覆盖仍由 `lib/plugin/theme-integration.ts` 处理：主题 `templates/plugins/<pluginSlug>/<name>.tsx` 优先于插件自带模板。
+
+编译采用混合模式：
+
+1. `predev` / `prebuild` 运行 `scripts/generate-theme-registry.js`，把已安装主题的 `templates/*.tsx` 静态 import 进 `lib/theme/generated-templates.ts`，模板按普通 Next 模块编译，**支持 `@/` 别名与 `'use client'`**。
+2. 新安装、尚未重启的主题不在注册表，`lib/theme/templates.ts` 回退运行时 esbuild 编译（仅服务端 TSX）；重启后自动升级。
+
+交互区块仍由宿主以 `props.slots` 提供（目录、评论表单、分页、灯箱等），主题可以直接复用，也可以用客户端组件自行实现。整体壳模板可重排 Header/Sidebar/Footer，但三者本身仍由宿主渲染，保证移动端菜单、主题切换等交互不丢。
 
 ### 8.4 安装与预览
 
 - ZIP/GZip 安装：与插件共用 `lib/ext-installer.ts`
 - Git 安装：`/api/console/themes/git-install`，受 `allowThemeGitInstall` 控制
-- 在线预览：`/preview?theme=<slug>`，复用首页组件并注入该主题变量；**不使用 cookie 强制全站动态化**
+- 在线预览：`/preview?theme=<slug>`，目标主题提供 `home.tsx` 时直接按该主题渲染，否则回退默认首页；**不使用 cookie 强制全站动态化**
 - 主题静态资源：`app/themes/[slug]/[...path]` 动态读取 `scripts/themes`，不复制到 `public`
 
 ***
@@ -740,4 +760,4 @@ npm install @rainynest/plugin-types@<version> --registry=https://registry.npmjs.
 
 > 文档版本：v3.0
 > 更新日期：2026-11-20
-> 对应代码：`rainynest@1.0.0`，SPI `@rainynest/plugin-types@0.3.1`
+> 对应代码：`rainynest@1.0.0`，SPI `@rainynest/plugin-types@0.3.2`

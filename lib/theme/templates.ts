@@ -1,21 +1,106 @@
-// lib/theme/templates.ts — 主题覆盖系统页面模板（Halo 风格"主题优先"）
+// lib/theme/templates.ts — 主题覆盖系统页面模板（Halo 风格「模板优先」）
 //
 // 约定：主题可在 scripts/themes/<slug>/templates/<name>.tsx 放置系统页面模板，
-// 存在即覆盖系统内置渲染（当前支持：post-detail）。
+// 存在即覆盖系统内置渲染。模板名与 Halo 的路由模板一一对应：
+//
+//   layout       整体壳（Header/Sidebar/Footer 的摆放）
+//   home         首页
+//   post-list    博客列表
+//   post         文章详情（兼容旧名 post-detail）
+//   page         独立页面
+//   archive      归档
+//   categories   分类列表
+//   category     分类详情
+//   tags         标签列表
+//   tag          标签详情
+//   search       搜索
+//   moments      说说列表
+//   moment       说说详情
+//   links        友链
+//   gallery      相册列表
+//   photo        相册详情
+//   error        404
 //
 // 模板为纯服务端 JSX（esbuild 运行时编译为 CJS 后 require）：
-// - 可 import：react/jsx-runtime（自动注入）、lucide-react 等 node_modules 内的 CJS 包
-// - 不可 import：'@/...' 别名路径、'use client' 组件（评论表单等交互区块
+// - 可 import：react/jsx-runtime（自动注入）、react、next/link、lucide-react 等
+//   node_modules 内的 CJS 包
+// - 不可 import：'@/...' 别名路径、'use client' 组件（评论表单、灯箱等交互区块
 //   由宿主以 ReactNode 插槽 props.slots 传入，主题只决定摆放位置）
 import 'server-only';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ComponentType, ReactNode } from 'react';
 import { getActiveTheme } from '../theme';
+import { themeTemplateRegistry } from './generated-templates';
 
-// ── 模板 Props 契约（主题作者可见） ──────────────────────────────
+// ── 通用数据结构（主题作者可见） ────────────────────────────────
 
-/** 文章详情页模板 props（数据已由宿主取好，模板只管排版） */
+export interface TemplateSite {
+  title: string;
+  subtitle: string | null;
+  description: string | null;
+  logo: string | null;
+  url: string | null;
+  footerText: string | null;
+  icp: string | null;
+}
+
+export interface TemplatePost {
+  id: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+  coverImage: string | null;
+  views: number;
+  createdAt: Date;
+  publishedAt: Date | null;
+  isTop?: boolean;
+  category?: { name: string; slug: string } | null;
+}
+
+export interface TemplateMenuItem {
+  name: string;
+  url: string;
+}
+
+// ── 各页面模板 Props 契约 ───────────────────────────────────────
+
+/** 整体壳：theme 模板负责 Header/Sidebar/Footer 的摆放，children 是页面内容 */
+export interface LayoutTemplateProps {
+  site: TemplateSite;
+  menus: TemplateMenuItem[];
+  header: ReactNode;
+  sidebar: ReactNode;
+  footer: ReactNode;
+  /** 插件 injectFooter 注入的节点 */
+  footerNodes: ReactNode;
+  children: ReactNode;
+}
+
+/** 首页 */
+export interface HomeTemplateProps {
+  site: TemplateSite;
+  posts: TemplatePost[];
+  total: number;
+  slots: {
+    /** 内置文章卡片网格（保留入场动画），主题可直接摆放或自行渲染 posts */
+    posts: ReactNode;
+  };
+}
+
+/** 博客列表 */
+export interface PostListTemplateProps {
+  posts: TemplatePost[];
+  total: number;
+  page: number;
+  totalPages: number;
+  slots: {
+    list: ReactNode;
+    pagination: ReactNode;
+  };
+}
+
+/** 文章详情（旧名 PostDetailTemplateProps 保留） */
 export interface PostDetailTemplateProps {
   post: {
     slug: string;
@@ -52,10 +137,184 @@ export interface PostDetailTemplateProps {
   };
 }
 
+/** 独立页面 */
+export interface PageTemplateProps {
+  page: {
+    title: string;
+    summary: string | null;
+    /** Markdown 渲染后的 HTML */
+    html: string;
+    /** 页面自定义侧边栏 HTML（可能为 null） */
+    sidebarHtml: string | null;
+    showSidebar: boolean;
+  };
+  slots: {
+    /** 插件 injectSinglePageContent 文末追加块 */
+    contentBlocks: ReactNode;
+  };
+}
+
+/** 归档 */
+export interface ArchiveTemplateProps {
+  total: number;
+  years: {
+    year: number;
+    posts: { id: string; title: string; slug: string; date: Date }[];
+  }[];
+}
+
+/** 分类列表 */
+export interface CategoriesTemplateProps {
+  categories: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    count: number;
+  }[];
+}
+
+/** 分类详情 */
+export interface CategoryTemplateProps {
+  category: { name: string; slug: string; description: string | null };
+  posts: TemplatePost[];
+  slots: {
+    list: ReactNode;
+  };
+}
+
+/** 标签列表 */
+export interface TagsTemplateProps {
+  tags: { id: string; name: string; slug: string; count: number }[];
+}
+
+/** 标签详情 */
+export interface TagTemplateProps {
+  tag: { name: string; slug: string } | null;
+  posts: TemplatePost[];
+  slots: {
+    list: ReactNode;
+  };
+}
+
+/** 搜索 */
+export interface SearchTemplateProps {
+  query: string;
+  results: {
+    id: string;
+    title: string;
+    slug: string;
+    summary: string | null;
+    snippet: string;
+  }[];
+  slots: {
+    /** 搜索表单（GET /search） */
+    form: ReactNode;
+  };
+}
+
+/** 说说列表 */
+export interface MomentsTemplateProps {
+  moments: TemplateMoment[];
+  slots: {
+    list: ReactNode;
+  };
+}
+
+/** 说说详情 */
+export interface MomentTemplateProps {
+  moment: TemplateMoment;
+  prev: { id: string; content: string } | null;
+  next: { id: string; content: string } | null;
+  slots: {
+    /** 图片灯箱 */
+    lightbox: ReactNode;
+  };
+}
+
+export interface TemplateMoment {
+  id: string;
+  content: string;
+  images: string[];
+  createdAt: Date;
+  user: { displayName: string; avatar: string | null };
+}
+
+/** 友链 */
+export interface LinksTemplateProps {
+  links: {
+    id: string;
+    name: string;
+    url: string;
+    logo: string | null;
+    description: string | null;
+  }[];
+  slots: {
+    list: ReactNode;
+  };
+}
+
+/** 相册列表 */
+export interface GalleryTemplateProps {
+  galleries: {
+    id: string;
+    title: string;
+    slug: string;
+    description: string | null;
+    coverImage: string | null;
+    count: number;
+  }[];
+  slots: {
+    list: ReactNode;
+  };
+}
+
+/** 相册详情 */
+export interface PhotoTemplateProps {
+  gallery: { title: string; description: string | null };
+  photos: { url: string; title: string | null; width: number | null; height: number | null }[];
+  slots: {
+    /** 瀑布流 + 灯箱（客户端组件） */
+    grid: ReactNode;
+  };
+}
+
+/** 404 */
+export interface ErrorTemplateProps {
+  status: number;
+  title: string;
+  message: string;
+}
+
+// ── 组件类型别名 ────────────────────────────────────────────────
+
 export type PostDetailTemplate = ComponentType<PostDetailTemplateProps>;
+export type PostTemplate = ComponentType<PostDetailTemplateProps>;
+export type LayoutTemplate = ComponentType<LayoutTemplateProps>;
+
+export interface TemplateComponentMap {
+  layout: LayoutTemplateProps;
+  home: HomeTemplateProps;
+  'post-list': PostListTemplateProps;
+  post: PostDetailTemplateProps;
+  'post-detail': PostDetailTemplateProps;
+  page: PageTemplateProps;
+  archive: ArchiveTemplateProps;
+  categories: CategoriesTemplateProps;
+  category: CategoryTemplateProps;
+  tags: TagsTemplateProps;
+  tag: TagTemplateProps;
+  search: SearchTemplateProps;
+  moments: MomentsTemplateProps;
+  moment: MomentTemplateProps;
+  links: LinksTemplateProps;
+  gallery: GalleryTemplateProps;
+  photo: PhotoTemplateProps;
+  error: ErrorTemplateProps;
+}
 
 /** 当前支持的系统模板名 */
-export type SystemTemplateName = 'post-detail';
+export type SystemTemplateName = keyof TemplateComponentMap;
 
 // ── 运行时编译加载 ──────────────────────────────────────────────
 
@@ -114,7 +373,7 @@ export async function loadTsxModule(
 }
 
 /**
- * 解析当前激活主题 templates 目录下的模板（相对路径，如 plugins/foo/bar.tsx）。
+ * 解析主题 templates 目录下的模板（相对路径，如 plugins/foo/bar.tsx）。
  * 不直接 import .tsx，统一走运行时编译；路径越界返回 null。
  */
 export async function resolveThemeTemplate(
@@ -131,24 +390,98 @@ export async function resolveThemeTemplate(
   return loadTsxModule(absPath, `theme-${theme.slug}-${cacheName}`);
 }
 
+const TEMPLATE_NAME_RE = /^[a-z][a-z0-9-]*$/;
+const THEME_SLUG_RE = /^[a-zA-Z0-9._-]+$/;
+
+/** 模板候选文件名（post 与旧名 post-detail 互相兼容） */
+function candidateFiles(name: SystemTemplateName): string[] {
+  if (name === 'post') return ['post.tsx', 'post-detail.tsx'];
+  if (name === 'post-detail') return ['post-detail.tsx', 'post.tsx'];
+  return [`${name}.tsx`];
+}
+
 /**
- * 解析主题对系统模板的覆盖。
+ * 构建期注册表查找：predev/prebuild 由 generate-theme-registry.js 静态 import
+ * 所有已安装主题模板，因此这里的组件支持 `@/` 别名与 `'use client'`。
+ */
+function registryTemplate(
+  themeSlug: string,
+  name: SystemTemplateName
+): { default: ComponentType<unknown> } | null {
+  const entry = themeTemplateRegistry[themeSlug];
+  if (!entry) return null;
+
+  for (const file of candidateFiles(name)) {
+    const key = file.replace(/\.tsx$/, '');
+    const mod = entry[key] as Record<string, unknown> | undefined;
+    const comp = mod?.default;
+    // 客户端组件在服务端模块里是 client reference 对象，不是函数
+    if (comp && (typeof comp === 'function' || typeof comp === 'object')) {
+      return { default: comp as ComponentType<unknown> };
+    }
+  }
+  return null;
+}
+
+/**
+ * 解析指定主题对系统模板的覆盖（不依赖激活主题，供在线预览使用）。
+ * 存在模板文件 → 编译并返回；不存在返回 null；编译失败抛错由调用方回退。
+ */
+export async function resolveSystemTemplateForTheme<T = unknown>(
+  themeSlug: string,
+  name: SystemTemplateName
+): Promise<{ default: ComponentType<T> } | null> {
+  if (!THEME_SLUG_RE.test(themeSlug) || !TEMPLATE_NAME_RE.test(name)) return null;
+
+  // 1. 构建期注册表优先：支持 @/ 别名、'use client'、正常参与 Next 编译
+  const registered = registryTemplate(themeSlug, name);
+  if (registered) return { default: registered.default as ComponentType<T> };
+
+  // 2. 运行时编译兜底：主题刚安装、尚未重启 dev/build 时使用；
+  //    仅支持服务端 TSX（不能用 @/ 与 'use client'）
+  const root = path.resolve(process.cwd(), 'scripts', 'themes', themeSlug, 'templates');
+  for (const file of candidateFiles(name)) {
+    const absPath = path.join(root, file);
+    if (!fs.existsSync(absPath)) continue;
+
+    const mod = await compileAndLoad(absPath, `theme-${themeSlug}-${name}`);
+    const comp = (mod.default ?? mod) as unknown;
+    if (typeof comp !== 'function') {
+      throw new Error(`主题模板 ${absPath} 缺少 default 导出组件`);
+    }
+    return { default: comp as ComponentType<T> };
+  }
+  return null;
+}
+
+/**
+ * 解析当前激活主题对系统模板的覆盖。
  * 存在 scripts/themes/<activeSlug>/templates/<name>.tsx → 编译并返回；
  * 否则返回 null（宿主回退内置模板）。编译失败抛错由调用方回退。
  */
-export async function resolveSystemTemplate(
+export async function resolveSystemTemplate<T = unknown>(
   name: SystemTemplateName
-): Promise<{ default: PostDetailTemplate } | null> {
+): Promise<{ default: ComponentType<T> } | null> {
   const theme = await getActiveTheme();
   if (!theme) return null;
 
-  const absPath = path.join(process.cwd(), 'scripts', 'themes', theme.slug, 'templates', `${name}.tsx`);
-  if (!fs.existsSync(absPath)) return null;
-
-  const mod = await compileAndLoad(absPath, name);
-  const comp = (mod.default ?? mod) as unknown;
-  if (typeof comp !== 'function') {
-    throw new Error(`主题模板 ${absPath} 缺少 default 导出组件`);
+  try {
+    return await resolveSystemTemplateForTheme<T>(theme.slug, name);
+  } catch (err) {
+    // 抛出给页面按需处理（多数页面 catch 后回退内置模板）
+    throw err;
   }
-  return { default: comp as PostDetailTemplate };
+}
+
+/** 列出主题已提供的系统模板名（后台/文档展示用） */
+export function listThemeTemplateFiles(themeSlug: string): string[] {
+  if (!THEME_SLUG_RE.test(themeSlug)) return [];
+  const root = path.resolve(process.cwd(), 'scripts', 'themes', themeSlug, 'templates');
+  if (!fs.existsSync(root)) return [];
+
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.tsx'))
+    .map((entry) => entry.name.replace(/\.tsx$/, ''))
+    .sort();
 }

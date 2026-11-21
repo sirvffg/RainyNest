@@ -294,9 +294,24 @@ interface CustomApiRouteDef {
 scripts/themes/<slug>/
 ├── theme.json                    # 元数据 + 配置 schema（必填）
 ├── theme.js                      # 配置 → CSS 变量映射（可选）
-├── templates/                    # 主题覆盖的前台页面模板（可选）
-│   ├── post-detail.tsx           # 覆盖系统文章详情页（见 §5）
-│   ├── sidebar.tsx
+├── templates/                    # 主题覆盖的前台页面模板（可选，见 §5）
+│   ├── layout.tsx                # 整体壳（Header/Sidebar/Footer 摆放）
+│   ├── home.tsx                  # 首页
+│   ├── post-list.tsx             # 博客列表
+│   ├── post.tsx                  # 文章详情（旧名 post-detail.tsx 兼容）
+│   ├── page.tsx                  # 独立页面
+│   ├── archive.tsx               # 归档
+│   ├── categories.tsx            # 分类列表
+│   ├── category.tsx              # 分类详情
+│   ├── tags.tsx                  # 标签列表
+│   ├── tag.tsx                   # 标签详情
+│   ├── search.tsx                # 搜索
+│   ├── moments.tsx               # 说说列表
+│   ├── moment.tsx                # 说说详情
+│   ├── links.tsx                 # 友链
+│   ├── gallery.tsx               # 相册列表
+│   ├── photo.tsx                 # 相册详情
+│   ├── error.tsx                 # 404
 │   └── plugins/<pluginSlug>/     # 覆盖插件模板（Halo 风格"主题优先"）
 │       └── my-widget.tsx
 ├── assets/                       # 静态资源
@@ -400,29 +415,87 @@ interface ActiveTheme extends ThemeMeta {
 
 ### 5. 主题覆盖系统页面模板（lib/theme/templates.ts）
 
-主题可在 `scripts/themes/<slug>/templates/post-detail.tsx` 放置文章详情页模板，存在即覆盖系统内置渲染（esbuild 运行时编译，mtime 变化自动重编译；编译失败自动回退内置模板）。
+主题在 `scripts/themes/<slug>/templates/<name>.tsx` 放置模板即可覆盖对应页面，存在即覆盖系统内置渲染；已安装主题走构建期注册表，新装未重启的走运行时 esbuild 兜底，编译失败都会自动回退内置模板。
 
-**规则（重要）**：模板是纯服务端 JSX——
-- 可 import：`lucide-react` 等 node_modules 内 CJS 包（`react/jsx-runtime` 自动注入）
-- 不可 import：`@/...` 别名路径、`'use client'` 组件
-- 评论表单 / TOC / 第三方评论等交互区块由宿主预渲染为 ReactNode 插槽传入
+**编译模式（混合）**：
+
+- **构建期注册表（默认）**：`predev` / `prebuild` 会执行 `scripts/generate-theme-registry.js`，扫描已安装主题的 `templates/*.tsx` 并生成静态 import 注册表 `lib/theme/generated-templates.ts`。这些模板按普通 Next 模块编译，**完整支持 `@/` 路径别名与 `'use client'` 客户端组件**。
+- **运行时兜底**：主题刚安装、尚未重启 dev/build 时，模板不在注册表中，会退回 esbuild 运行时编译。此模式仅支持服务端 TSX，不能使用 `@/` 与 `'use client'`；重启一次后自动升级为构建期模式。
+- 手动刷新注册表：`npm run theme:registry`（之后仍需重启 dev）。
+
+**规则**：
+- 服务端模板可 import `next/link`、`lucide-react`、`@/lib/...` 等；客户端组件需在文件顶部写 `'use client'`。
+- 客户端模板的 props 必须可序列化；`slots` 里的 ReactNode 由宿主预渲染，可直接摆放。
+- 评论表单、TOC、灯箱、分页等交互区块仍然以 `slots` 提供，主题既可复用，也可用 `'use client'` 自己实现。
+
+**模板名与契约**（Props 类型定义在 `lib/theme/templates.ts`）：
+
+| 模板文件 | Props | 关键数据 / 插槽 |
+|----------|-------|-----------------|
+| `layout.tsx` | `LayoutTemplateProps` | `site`、`menus`、`header`、`sidebar`、`footer`、`footerNodes`、`children` |
+| `home.tsx` | `HomeTemplateProps` | `site`、`posts`、`total`、`slots.posts` |
+| `post-list.tsx` | `PostListTemplateProps` | `posts`、`page`、`totalPages`、`slots.list`、`slots.pagination` |
+| `post.tsx` | `PostDetailTemplateProps` | `post`、`html`、`commentsCount`、`slots.tocMobile/tocDesktop/comments/contentBlocks` |
+| `page.tsx` | `PageTemplateProps` | `page`（title/summary/html/sidebarHtml/showSidebar）、`slots.contentBlocks` |
+| `archive.tsx` | `ArchiveTemplateProps` | `total`、`years[]` |
+| `categories.tsx` | `CategoriesTemplateProps` | `categories[]` |
+| `category.tsx` | `CategoryTemplateProps` | `category`、`posts`、`slots.list` |
+| `tags.tsx` | `TagsTemplateProps` | `tags[]` |
+| `tag.tsx` | `TagTemplateProps` | `tag`、`posts`、`slots.list` |
+| `search.tsx` | `SearchTemplateProps` | `query`、`results[]`、`slots.form` |
+| `moments.tsx` | `MomentsTemplateProps` | `moments[]`、`slots.list` |
+| `moment.tsx` | `MomentTemplateProps` | `moment`、`prev`、`next`、`slots.lightbox` |
+| `links.tsx` | `LinksTemplateProps` | `links[]`、`slots.list` |
+| `gallery.tsx` | `GalleryTemplateProps` | `galleries[]`、`slots.list` |
+| `photo.tsx` | `PhotoTemplateProps` | `gallery`、`photos[]`、`slots.grid` |
+| `error.tsx` | `ErrorTemplateProps` | `status`、`title`、`message` |
+
+文章详情示例：
 
 ```tsx
-// scripts/themes/<slug>/templates/post-detail.tsx
-export default function PostDetail({ post, html, commentsCount, slots }) {
+// scripts/themes/<slug>/templates/post.tsx
+export default function PostDetail({ post, html, slots }) {
   return (
     <div>
       <h1>{post.title}</h1>
       <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
-      {slots.contentBlocks}   {/* 插件文末追加块 */}
-      {slots.comments}        {/* 完整评论区 */}
-      {/* slots.tocMobile / slots.tocDesktop 可选摆放 */}
+      {slots.contentBlocks}
+      {slots.comments}
     </div>
   );
 }
 ```
 
-**PostDetailTemplateProps 契约**：
+整体壳层示例（可把侧栏放左侧、隐藏页脚等）：
+
+```tsx
+// scripts/themes/<slug>/templates/layout.tsx
+export default function ThemeLayout({ site, header, sidebar, footer, footerNodes, children }) {
+  return (
+    <div className="min-h-screen flex flex-col">
+      {header}
+      <div className="mx-auto flex w-full max-w-7xl gap-8 px-4 py-8">
+        {sidebar}
+        <main className="min-w-0 flex-1">{children}</main>
+      </div>
+      {footer}
+      {footerNodes}
+    </div>
+  );
+}
+```
+
+**宿主 API**：
+
+| 函数 | 说明 |
+|------|------|
+| `resolveSystemTemplate<T>(name)` | 按激活主题解析模板，无则 null |
+| `resolveSystemTemplateForTheme<T>(slug, name)` | 按指定主题解析（预览用） |
+| `resolveThemeTemplate(relPath, cacheName)` | 解析主题 `templates/` 下任意相对路径 |
+| `loadTsxModule(absPath, cacheName)` | 运行时编译任意 TSX 文件 |
+| `listThemeTemplateFiles(slug)` | 列出主题已提供的系统模板名 |
+
+**PostDetailTemplateProps 细节**：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -437,7 +510,7 @@ export default function PostDetail({ post, html, commentsCount, slots }) {
 | `slots.comments` | `ReactNode` | 评论区（已处理关闭评论与插件替换） |
 | `slots.contentBlocks` | `ReactNode \| null` | 插件文末追加块 |
 
-主题模板中的 Tailwind class 由 `tailwind.config.ts` 的 `./scripts/themes/**/templates/**` 扫描生成，自定义新 class 后需重启 dev/build 一次。
+主题模板中的 Tailwind class 由 `tailwind.config.ts` 的 `./scripts/themes/**/templates/**` 扫描生成，自定义新 class 后需重启 dev/build 一次。在线预览走 `/preview?theme=<slug>`，若目标主题提供 `home.tsx` 会直接渲染该模板。
 
 ### 6. 主题覆盖插件模板（theme-integration.ts）
 

@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { getSearchProvider } from '@/lib/search/default-provider';
+import { resolveSystemTemplate, type SearchTemplateProps } from '@/lib/theme/templates';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,37 @@ export default async function SearchPage({
     } catch { /* 静默 */ }
   }
 
+  // 搜索表单提取为变量，默认分支与主题模板共用
+  const formNode = (
+    <form action="/search" method="GET" className="mt-6 flex gap-2">
+      <input
+        type="search"
+        name="q"
+        defaultValue={query}
+        placeholder="输入关键词..."
+        className="flex-1 px-4 py-2.5 rounded border border-line bg-bg text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <button
+        type="submit"
+        className="px-5 py-2.5 rounded bg-primary text-white text-sm font-medium transition-all duration-200 hover:bg-primary-hover active:scale-95"
+      >
+        搜索
+      </button>
+    </form>
+  );
+
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<SearchTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<SearchTemplateProps>('search');
+  } catch (err) {
+    console.error('[Theme] search 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return <Template query={query} results={results} slots={{ form: formNode }} />;
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       <header className="anim-fade-in-up">
@@ -28,21 +60,7 @@ export default async function SearchPage({
           <Search className="w-7 h-7 text-primary" />
           搜索
         </h1>
-        <form action="/search" method="GET" className="mt-6 flex gap-2">
-          <input
-            type="search"
-            name="q"
-            defaultValue={query}
-            placeholder="输入关键词..."
-            className="flex-1 px-4 py-2.5 rounded border border-line bg-bg text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
-          <button
-            type="submit"
-            className="px-5 py-2.5 rounded bg-primary text-white text-sm font-medium transition-all duration-200 hover:bg-primary-hover active:scale-95"
-          >
-            搜索
-          </button>
-        </form>
+        {formNode}
       </header>
 
       {query && (

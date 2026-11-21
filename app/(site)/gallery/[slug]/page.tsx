@@ -1,10 +1,12 @@
 // app/gallery/[slug]/page.tsx — 相册详情（CSS columns 瀑布流 + Lightbox）
+// 页面模板可被主题覆盖（scripts/themes/<slug>/templates/photo.tsx）
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { ArrowLeft, Image as ImageIcon } from 'lucide-react';
 import { db } from '@/lib/prisma';
 import PhotoGrid from '@/components/gallery/PhotoGrid';
+import { resolveSystemTemplate, type PhotoTemplateProps } from '@/lib/theme/templates';
 
 export const revalidate = 600;
 
@@ -43,6 +45,38 @@ export default async function GalleryDetailPage({ params }: Props) {
 
   if (!gallery || gallery.status !== 'PUBLISHED') notFound();
 
+  const photos = gallery.photos.map((p) => ({
+    url: p.url,
+    title: p.title,
+    width: p.width,
+    height: p.height,
+  }));
+
+  const gridNode =
+    photos.length === 0 ? null : (
+      <div className="mt-8 anim-fade-in">
+        <PhotoGrid layout="masonry" photos={photos} />
+      </div>
+    );
+
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<PhotoTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<PhotoTemplateProps>('photo');
+  } catch (err) {
+    console.error('[Theme] photo 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return (
+      <Template
+        gallery={{ title: gallery.title, description: gallery.description }}
+        photos={photos}
+        slots={{ grid: gridNode }}
+      />
+    );
+  }
+
   return (
     <div>
       {/* 页头 */}
@@ -66,21 +100,9 @@ export default async function GalleryDetailPage({ params }: Props) {
       </header>
 
       {/* 瀑布流照片墙 */}
-      {gallery.photos.length === 0 ? (
+      {gridNode ?? (
         <div className="mt-10 rounded-lg border border-dashed border-line p-12 text-center text-fg-muted anim-fade-in">
           相册里还没有照片
-        </div>
-      ) : (
-        <div className="mt-8 anim-fade-in">
-          <PhotoGrid
-            layout="masonry"
-            photos={gallery.photos.map((p) => ({
-              url: p.url,
-              title: p.title,
-              width: p.width,
-              height: p.height,
-            }))}
-          />
         </div>
       )}
     </div>

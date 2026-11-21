@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { FolderOpen, Folders } from 'lucide-react';
 import { db } from '@/lib/prisma';
+import { resolveSystemTemplate, type CategoriesTemplateProps } from '@/lib/theme/templates';
 
 export const revalidate = 300;
 
@@ -13,6 +14,29 @@ export default async function CategoriesPage() {
       orderBy: { name: 'asc' },
     });
   } catch { /* 数据库未就绪 */ }
+
+  // 主题覆盖分类列表：templates/categories.tsx
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<CategoriesTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<CategoriesTemplateProps>('categories');
+  } catch (err) {
+    console.error('[Theme] categories 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return (
+      <Template
+        categories={categories.map((cat) => ({
+          id: cat.id,
+          name: cat.name,
+          slug: cat.slug,
+          description: cat.description,
+          count: cat._count.posts,
+        }))}
+      />
+    );
+  }
 
   return (
     <div>

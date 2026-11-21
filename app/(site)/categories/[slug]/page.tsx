@@ -5,6 +5,7 @@ import type { Metadata } from 'next';
 import { FolderOpen, ArrowLeft } from 'lucide-react';
 import { db } from '@/lib/prisma';
 import PostCard, { type PostCardData } from '@/components/post/PostCard';
+import { resolveSystemTemplate, type CategoryTemplateProps } from '@/lib/theme/templates';
 
 export const revalidate = 300;
 
@@ -47,6 +48,38 @@ export default async function CategoryPostsPage({ params }: Props) {
 
   if (!category) notFound();
 
+  const listNode =
+    posts.length === 0 ? (
+      <div className="mt-10 rounded-lg border border-dashed border-line p-12 text-center text-fg-muted anim-fade-in">
+        该分类下暂无文章
+      </div>
+    ) : (
+      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
+        {posts.map((post, i) => (
+          <PostCard key={post.id} post={post} index={i} />
+        ))}
+      </div>
+    );
+
+  // 主题覆盖分类详情：templates/category.tsx
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<CategoryTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<CategoryTemplateProps>('category');
+  } catch (err) {
+    console.error('[Theme] category 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return (
+      <Template
+        category={{ name: category.name, slug, description: category.description }}
+        posts={posts}
+        slots={{ list: listNode }}
+      />
+    );
+  }
+
   return (
     <div>
       <header className="anim-fade-in-up">
@@ -67,17 +100,7 @@ export default async function CategoryPostsPage({ params }: Props) {
         <p className="mt-2 text-fg-muted text-sm">共 {posts.length} 篇文章</p>
       </header>
 
-      {posts.length === 0 ? (
-        <div className="mt-10 rounded-lg border border-dashed border-line p-12 text-center text-fg-muted anim-fade-in">
-          该分类下暂无文章
-        </div>
-      ) : (
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
-          {posts.map((post, i) => (
-            <PostCard key={post.id} post={post} index={i} />
-          ))}
-        </div>
-      )}
+      {listNode}
     </div>
   );
 }

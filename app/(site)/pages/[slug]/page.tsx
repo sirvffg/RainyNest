@@ -4,6 +4,8 @@ import type { Metadata } from 'next';
 import { FileText } from 'lucide-react';
 import { db } from '@/lib/prisma';
 import { collectSinglePageContentHtml } from '@/lib/plugin/ui';
+import { renderMarkdown } from '@/lib/markdown/processor';
+import { resolveSystemTemplate, type PageTemplateProps } from '@/lib/theme/templates';
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer';
 
 export const revalidate = 600;
@@ -65,6 +67,47 @@ export default async function CustomPage({ params }: Props) {
   const hideSiteSidebar = !page.showSidebar || !!customSidebar;
   const twoColumn = page.showSidebar && !!customSidebar;
 
+  // 正文与自定义侧边栏统一走 Markdown 管线，渲染结果同时供默认分支与主题模板复用
+  const html = await renderMarkdown(page.content);
+  const sidebarHtml = customSidebar ? await renderMarkdown(customSidebar) : null;
+
+  const contentBlocksNode =
+    contentBlocks.length > 0 ? (
+      <div className="mt-8 space-y-4">
+        {contentBlocks.map((block, i) => (
+          <div
+            key={i}
+            className="anim-fade-in"
+            style={{ animationDelay: `${0.2 + i * 0.05}s` }}
+            dangerouslySetInnerHTML={{ __html: block }}
+          />
+        ))}
+      </div>
+    ) : null;
+
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<PageTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<PageTemplateProps>('page');
+  } catch (err) {
+    console.error('[Theme] page 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return (
+      <Template
+        page={{
+          title: page.title,
+          summary: page.summary,
+          html,
+          sidebarHtml,
+          showSidebar: page.showSidebar,
+        }}
+        slots={{ contentBlocks: contentBlocksNode }}
+      />
+    );
+  }
+
   return (
     <div className={twoColumn ? 'xl:grid xl:grid-cols-[minmax(0,1fr)_240px] xl:gap-10' : ''}>
       {hideSiteSidebar && (
@@ -86,31 +129,20 @@ export default async function CustomPage({ params }: Props) {
         </header>
 
         <MarkdownRenderer
-          content={page.content}
+          html={html}
           className="mt-8"
           // 与文章正文一致，保留统一管线（Expressive Code 高亮等）
         />
 
         {/* 插件扩展点：injectSinglePageContent 文末追加块 */}
-        {contentBlocks.length > 0 && (
-          <div className="mt-8 space-y-4">
-            {contentBlocks.map((block, i) => (
-              <div
-                key={i}
-                className="anim-fade-in"
-                style={{ animationDelay: `${0.2 + i * 0.05}s` }}
-                dangerouslySetInnerHTML={{ __html: block }}
-              />
-            ))}
-          </div>
-        )}
+        {contentBlocksNode}
       </div>
 
       {/* 自定义侧边栏内容 */}
       {twoColumn && (
         <aside className="hidden xl:block">
           <div className="sticky top-20 rounded-xl border border-line bg-bg p-4">
-            <MarkdownRenderer content={customSidebar ?? ''} />
+            <MarkdownRenderer html={sidebarHtml ?? ''} />
           </div>
         </aside>
       )}

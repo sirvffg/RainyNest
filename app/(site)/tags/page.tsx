@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { Tag as TagIcon, Tags } from 'lucide-react';
 import { db } from '@/lib/prisma';
+import { resolveSystemTemplate, type TagsTemplateProps } from '@/lib/theme/templates';
 
 export const revalidate = 300;
 
@@ -22,6 +23,28 @@ export default async function TagsPage() {
   } catch { /* 数据库未就绪 */ }
 
   const max = Math.max(1, ...tags.map((t) => t._count.posts));
+
+  // 主题覆盖标签列表：templates/tags.tsx
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<TagsTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<TagsTemplateProps>('tags');
+  } catch (err) {
+    console.error('[Theme] tags 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return (
+      <Template
+        tags={tags.map((tag) => ({
+          id: tag.id,
+          name: tag.name,
+          slug: tag.slug,
+          count: tag._count.posts,
+        }))}
+      />
+    );
+  }
 
   return (
     <div>

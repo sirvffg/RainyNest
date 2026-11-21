@@ -16,7 +16,7 @@ const THEMES_DIR = path.join(process.cwd(), 'scripts', 'themes');
 
 export const MAX_PACKAGE_SIZE = 20 * 1024 * 1024; // 20MB
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
-const ALLOWED = new Set(['.js', '.json', '.css', '.png', '.jpg', '.jpeg', '.svg', '.webp', '.sql', '.md', '.txt', '.woff', '.woff2', '.ttf']);
+const ALLOWED = new Set(['.js', '.tsx', '.json', '.css', '.png', '.jpg', '.jpeg', '.svg', '.webp', '.sql', '.md', '.txt', '.woff', '.woff2', '.ttf']);
 
 export type ExtKind = 'plugin' | 'theme';
 export type Container = 'zip' | 'gz';

@@ -144,7 +144,7 @@ export default async function BlogPostPage({ params }: Props) {
   // 主题覆盖优先，回退内置模板；覆盖模板编译失败也回退
   let Template: PostDetailTemplateComp = PostDetailTemplate;
   try {
-    const override = await resolveSystemTemplate('post-detail');
+    const override = await resolveSystemTemplate<PostDetailTemplateProps>('post');
     if (override) Template = override.default;
   } catch (err) {
     console.error('[Theme] post-detail 主题模板加载失败，回退内置模板:', err);

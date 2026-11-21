@@ -1,7 +1,8 @@
-// app/gallery/page.tsx — 相册列表
+// app/gallery/page.tsx — 相册列表（页面模板可被主题覆盖：templates/gallery.tsx）
 import { Camera } from 'lucide-react';
 import { db } from '@/lib/prisma';
 import GalleryCard, { type GalleryCardData } from '@/components/gallery/GalleryCard';
+import { resolveSystemTemplate, type GalleryTemplateProps } from '@/lib/theme/templates';
 
 export const revalidate = 300;
 
@@ -15,6 +16,43 @@ export default async function GalleryListPage() {
     });
   } catch { /* 数据库未就绪 */ }
 
+  const listNode =
+    galleries.length === 0 ? (
+      <div className="mt-10 rounded-lg border border-dashed border-line p-12 text-center text-fg-muted anim-fade-in">
+        还没有相册
+      </div>
+    ) : (
+      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
+        {galleries.map((g) => (
+          <GalleryCard key={g.id} gallery={g} />
+        ))}
+      </div>
+    );
+
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<GalleryTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<GalleryTemplateProps>('gallery');
+  } catch (err) {
+    console.error('[Theme] gallery 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return (
+      <Template
+        galleries={galleries.map((g) => ({
+          id: g.id,
+          title: g.title,
+          slug: g.slug,
+          description: g.description,
+          coverImage: g.coverImage,
+          count: g._count.photos,
+        }))}
+        slots={{ list: listNode }}
+      />
+    );
+  }
+
   return (
     <div>
       <header className="anim-fade-in-up">
@@ -25,17 +63,7 @@ export default async function GalleryListPage() {
         <p className="mt-2 text-fg-muted text-sm">共 {galleries.length} 个相册</p>
       </header>
 
-      {galleries.length === 0 ? (
-        <div className="mt-10 rounded-lg border border-dashed border-line p-12 text-center text-fg-muted anim-fade-in">
-          还没有相册
-        </div>
-      ) : (
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
-          {galleries.map((g) => (
-            <GalleryCard key={g.id} gallery={g} />
-          ))}
-        </div>
-      )}
+      {listNode}
     </div>
   );
 }

@@ -5,6 +5,11 @@ import type { Metadata } from 'next';
 import { ArrowLeft, ArrowRight, CloudRain, User } from 'lucide-react';
 import { db } from '@/lib/prisma';
 import PhotoLightbox from '@/components/gallery/PhotoLightbox';
+import {
+  resolveSystemTemplate,
+  type MomentTemplateProps,
+  type TemplateMoment,
+} from '@/lib/theme/templates';
 
 export const revalidate = 600;
 
@@ -76,6 +81,38 @@ export default async function MomentDetailPage({ params }: Props) {
 
   const images = parseImages(moment.images);
 
+  // 图片灯箱提取为变量，默认分支与主题模板共用
+  const lightboxNode =
+    images.length > 0 ? (
+      <PhotoLightbox photos={images.map((url) => ({ url }))} className="mt-4" />
+    ) : null;
+
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<MomentTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<MomentTemplateProps>('moment');
+  } catch (err) {
+    console.error('[Theme] moment 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    const templateMoment: TemplateMoment = {
+      id: moment.id,
+      content: moment.content,
+      images,
+      createdAt: moment.createdAt,
+      user: moment.user,
+    };
+    return (
+      <Template
+        moment={templateMoment}
+        prev={prev}
+        next={next}
+        slots={{ lightbox: lightboxNode }}
+      />
+    );
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
       <Link
@@ -121,9 +158,7 @@ export default async function MomentDetailPage({ params }: Props) {
         </p>
 
         {/* 图片预览 */}
-        {images.length > 0 && (
-          <PhotoLightbox photos={images.map((url) => ({ url }))} className="mt-4" />
-        )}
+        {lightboxNode}
       </article>
 
       {/* 上一篇 / 下一篇 */}

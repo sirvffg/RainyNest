@@ -5634,7 +5634,7 @@ Tailwind 类名覆盖方案更复杂（要在运行时注入新的 Tailwind clas
 
 ### 15.3 插件 SPI 实际实现
 
-类型来源：`@rainynest/plugin-types@0.3.1`（已发布到 npm，源码在 `RainyNest_Dev/packages/types`）。`lib/plugin/types.ts` 仅做统一 re-export，宿主不再维护本地类型副本；扩展点变更时发布新版本类型包并升级依赖即可。
+类型来源：`@rainynest/plugin-types@0.3.2`（已发布到 npm，源码在 `RainyNest_Dev/packages/types`）。`lib/plugin/types.ts` 仅做统一 re-export，宿主不再维护本地类型副本；扩展点变更时发布新版本类型包并升级依赖即可。
 
 新增/已实现扩展点：
 
@@ -5724,7 +5724,7 @@ Tailwind 类名覆盖方案更复杂（要在运行时注入新的 Tailwind clas
 | `CodeBlock` 组件 | 未使用；代码高亮统一走 Expressive Code（rehype 插件） |
 | PlantUML | 使用公共 `plantuml.com` SVG 服务，非本地渲染 |
 | 主题 `vendor` 预编译 | 未采用 `build-vendor`；运行时直接编译 `scripts/themes` 模板 |
-| npm 类型包 | `@rainynest/plugin-types` 已发布 0.3.1，主项目从 npm 安装并直接 re-export；类型包由同一维护者发布，不再使用本地补丁 |
+| npm 类型包 | `@rainynest/plugin-types` 已发布 0.3.2，主项目从 npm 安装并直接 re-export；类型包由同一维护者发布，不再使用本地补丁 |
 
 ***
 

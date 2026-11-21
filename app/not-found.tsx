@@ -1,7 +1,26 @@
 import Link from 'next/link';
 import { Home, CloudRain } from 'lucide-react';
+import { resolveSystemTemplate, type ErrorTemplateProps } from '@/lib/theme/templates';
 
-export default function NotFound() {
+export default async function NotFound() {
+  const props: ErrorTemplateProps = {
+    status: 404,
+    title: '404',
+    message: '页面被雨淋走了 找不到这个角落',
+  };
+
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<ErrorTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<ErrorTemplateProps>('error');
+  } catch (err) {
+    console.error('[Theme] error 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return <Template {...props} />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-6 px-4 anim-fade-in">
       <CloudRain className="w-16 h-16 text-primary anim-scale-in" strokeWidth={1.5} />

@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { Archive } from 'lucide-react';
 import { db } from '@/lib/prisma';
+import { resolveSystemTemplate, type ArchiveTemplateProps } from '@/lib/theme/templates';
 
 export const revalidate = 300;
 
@@ -32,6 +33,32 @@ export default async function ArchivePage() {
     groups.get(year)!.push(post);
   }
   const years = [...groups.entries()].sort((a, b) => b[0] - a[0]);
+
+  // 主题覆盖归档：templates/archive.tsx
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<ArchiveTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<ArchiveTemplateProps>('archive');
+  } catch (err) {
+    console.error('[Theme] archive 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return (
+      <Template
+        total={posts.length}
+        years={years.map(([year, items]) => ({
+          year,
+          posts: items.map((post) => ({
+            id: post.id,
+            title: post.title,
+            slug: post.slug,
+            date: post.publishedAt || post.createdAt,
+          })),
+        }))}
+      />
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto">

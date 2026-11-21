@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { db } from '@/lib/prisma';
 import PostList from '@/components/post/PostList';
 import type { PostCardData } from '@/components/post/PostCard';
+import { resolveSystemTemplate, type PostListTemplateProps } from '@/lib/theme/templates';
 
 export const revalidate = 300;
 
@@ -35,6 +36,55 @@ export default async function BlogListPage({
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const listNode =
+    posts.length === 0 ? <PostList posts={posts} empty="暂无文章" /> : <PostList posts={posts} />;
+
+  const paginationNode =
+    totalPages > 1 ? (
+      <nav className="flex items-center justify-center gap-2 pt-4 anim-fade-in">
+        {current > 1 && (
+          <Link
+            href={`/blog?page=${current - 1}`}
+            className="px-4 py-2 rounded border border-line text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
+          >
+            上一页
+          </Link>
+        )}
+        <span className="px-4 py-2 text-sm text-fg-muted">
+          {current} / {totalPages}
+        </span>
+        {current < totalPages && (
+          <Link
+            href={`/blog?page=${current + 1}`}
+            className="px-4 py-2 rounded border border-line text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
+          >
+            下一页
+          </Link>
+        )}
+      </nav>
+    ) : null;
+
+  // 主题覆盖文章列表：templates/post-list.tsx
+  let Override: Awaited<ReturnType<typeof resolveSystemTemplate<PostListTemplateProps>>> = null;
+  try {
+    Override = await resolveSystemTemplate<PostListTemplateProps>('post-list');
+  } catch (err) {
+    console.error('[Theme] post-list 模板加载失败，回退内置模板:', err);
+  }
+
+  if (Override) {
+    const Template = Override.default;
+    return (
+      <Template
+        posts={posts}
+        total={total}
+        page={current}
+        totalPages={totalPages}
+        slots={{ list: listNode, pagination: paginationNode }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-8">
       <header className="anim-fade-in-up">
@@ -42,36 +92,10 @@ export default async function BlogListPage({
         <p className="mt-2 text-fg-muted text-sm">共 {total} 篇文章</p>
       </header>
 
-      {posts.length === 0 ? (
-        <PostList posts={posts} empty="暂无文章" />
-      ) : (
-        <PostList posts={posts} />
-      )}
+      {listNode}
 
       {/* 分页 */}
-      {totalPages > 1 && (
-        <nav className="flex items-center justify-center gap-2 pt-4 anim-fade-in">
-          {current > 1 && (
-            <Link
-              href={`/blog?page=${current - 1}`}
-              className="px-4 py-2 rounded border border-line text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
-            >
-              上一页
-            </Link>
-          )}
-          <span className="px-4 py-2 text-sm text-fg-muted">
-            {current} / {totalPages}
-          </span>
-          {current < totalPages && (
-            <Link
-              href={`/blog?page=${current + 1}`}
-              className="px-4 py-2 rounded border border-line text-sm transition-all duration-200 hover:border-primary hover:text-primary active:scale-95"
-            >
-              下一页
-            </Link>
-          )}
-        </nav>
-      )}
+      {paginationNode}
     </div>
   );
 }

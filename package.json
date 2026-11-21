@@ -4,12 +4,13 @@
   "private": true,
   "description": "RainyNest 博客系统 — Next.js 15 + Prisma + SQLite，插件/主题可扩展",
   "scripts": {
-    "predev": "node scripts/ensure-extensions.js",
+    "predev": "node scripts/ensure-extensions.js && node scripts/generate-theme-registry.js",
     "dev": "next dev",
-    "prebuild": "node scripts/ensure-extensions.js",
+    "prebuild": "node scripts/ensure-extensions.js && node scripts/generate-theme-registry.js",
     "build": "next build --turbopack",
-    "prestart": "node scripts/ensure-extensions.js",
+    "prestart": "node scripts/ensure-extensions.js && node scripts/generate-theme-registry.js",
     "start": "next start",
+    "theme:registry": "node scripts/generate-theme-registry.js",
     "lint": "next lint",
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma-analytics/analytics.prisma",
     "db:migrate": "prisma migrate dev --schema=prisma/schema.prisma",
@@ -58,7 +59,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@rainynest/plugin-types": "^0.3.1",
+    "@rainynest/plugin-types": "^0.3.2",
     "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.0",
